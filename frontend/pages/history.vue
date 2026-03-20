@@ -11,9 +11,9 @@
 
       <div class="topbar-right">
         <template v-if="isAuthenticated">
-          <div class="user-chip soft-pill">
+          <NuxtLink to="/profile" class="user-chip soft-pill">
             <span>{{ displayName }}</span>
-          </div>
+          </NuxtLink>
           <el-button round @click="handleLogout">退出</el-button>
         </template>
         <template v-else>
@@ -66,7 +66,7 @@
 
           <div class="card-copy">
             <h2>{{ item.title || item.original_filename }}</h2>
-            <p>COCA {{ item.known_words_level }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
+            <p>{{ getKnownWordsLabel(item.known_words_level) }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
           </div>
 
           <div class="card-metrics">
@@ -152,10 +152,10 @@
           <span class="field-label">已掌握范围</span>
           <el-select v-model="reanalyzeKnownWordsLevel" size="large" class="dialog-select">
             <el-option
-              v-for="level in knownWordLevels"
-              :key="level"
-              :label="`COCA ${level}`"
-              :value="level"
+              v-for="option in knownWordsOptions"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
             />
           </el-select>
         </div>
@@ -205,14 +205,15 @@ const route = useRoute()
 const { request } = useApi()
 const { theme, toggleTheme } = useTheme()
 const { isAuthenticated, displayName, openAuth, clearAuth } = useAuth()
+const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
+const { defaultKnownWordsLevel } = useUserPreferences()
 
 const loading = ref(false)
 const items = ref<HistoryItem[]>([])
 const total = ref(0)
 const pageSize = 12
-const knownWordLevels = [1000, 2000, 3000, 5000, 8000, 10000, 12000, 15000]
 const reanalyzeVisible = ref(false)
-const reanalyzeKnownWordsLevel = ref(3000)
+const reanalyzeKnownWordsLevel = ref(defaultKnownWordsLevel.value)
 const selectedHistoryItem = ref<HistoryItem | null>(null)
 const reanalyzingBookId = ref<number | null>(null)
 const deletingResultId = ref<number | null>(null)
@@ -255,7 +256,7 @@ const loadHistory = async () => {
 
 const openReanalyze = (item: HistoryItem) => {
   selectedHistoryItem.value = item
-  reanalyzeKnownWordsLevel.value = item.known_words_level
+  reanalyzeKnownWordsLevel.value = defaultKnownWordsLevel.value
   reanalyzeVisible.value = true
 }
 

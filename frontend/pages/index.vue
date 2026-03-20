@@ -22,9 +22,9 @@
           <NuxtLink to="/history">
             <el-button round>书架</el-button>
           </NuxtLink>
-          <div class="user-chip soft-pill">
+          <NuxtLink to="/profile" class="user-chip soft-pill">
             <span>{{ displayName }}</span>
-          </div>
+          </NuxtLink>
           <el-button round @click="handleLogout">退出</el-button>
         </template>
         <template v-else>
@@ -112,13 +112,13 @@
               <span class="tile-step">Step 3</span>
             </div>
             <h3>设置已掌握范围</h3>
-            <p>从 COCA 1000 到 15000，帮助系统推断这本书对你的真实难度。</p>
+            <p>支持 COCA 数值档位，也支持初中、高中、四级、六级等常用词汇基础标签。</p>
             <el-select v-model="knownWordsLevel" size="large" class="level-select">
               <el-option
-                v-for="level in knownWordLevels"
-                :key="level"
-                :label="`COCA ${level}`"
-                :value="level"
+                v-for="option in knownWordsOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
               />
             </el-select>
           </article>
@@ -134,7 +134,7 @@
             <span>个人词库</span>
           </div>
           <div class="trust-item">
-            <strong>COCA {{ knownWordsLevel }}</strong>
+            <strong>{{ currentKnownWordsLabel }}</strong>
             <span>当前范围</span>
           </div>
         </div>
@@ -158,6 +158,8 @@ const {
   clearAuth
 } = useAuth()
 const { request } = useApi()
+const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
+const { defaultKnownWordsLevel } = useUserPreferences()
 
 const bookInputRef = ref<HTMLInputElement | null>(null)
 const vocabularyInputRef = ref<HTMLInputElement | null>(null)
@@ -165,12 +167,19 @@ const selectedBookFile = ref<File | null>(null)
 const selectedVocabularyFile = ref<File | null>(null)
 const submitting = ref(false)
 const uploadingVocabulary = ref(false)
-const knownWordsLevel = ref(3000)
-
-const knownWordLevels = [1000, 2000, 3000, 5000, 8000, 10000, 12000, 15000]
+const knownWordsLevel = ref(defaultKnownWordsLevel.value)
 
 const selectedBookName = computed(() => selectedBookFile.value?.name || '')
 const selectedVocabularyName = computed(() => selectedVocabularyFile.value?.name || '')
+const currentKnownWordsLabel = computed(() => getKnownWordsLabel(knownWordsLevel.value))
+
+watch(
+  () => defaultKnownWordsLevel.value,
+  (value) => {
+    knownWordsLevel.value = value
+  },
+  { immediate: true }
+)
 
 const triggerBookSelect = () => {
   bookInputRef.value?.click()

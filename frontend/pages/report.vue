@@ -41,7 +41,7 @@
             <span>任务编号</span>
           </div>
           <div class="meta-card soft-panel">
-            <strong>COCA {{ job?.known_words_level || '--' }}</strong>
+            <strong>{{ getKnownWordsLabel(job?.known_words_level) }}</strong>
             <span>当前已掌握范围</span>
           </div>
           <div class="meta-card soft-panel">
@@ -78,7 +78,7 @@
           <p>{{ result.reading_advice.message }}</p>
           <div class="meta-row">
             <div>
-              <strong>COCA {{ result.known_words_level }}</strong>
+              <strong>{{ getKnownWordsLabel(result.known_words_level) }}</strong>
               <span>当前已掌握范围</span>
             </div>
             <div>
@@ -167,6 +167,7 @@ type JobState = 'loading' | 'processing' | 'completed' | 'failed' | 'empty'
 const route = useRoute()
 const router = useRouter()
 const { request, downloadFile } = useApi()
+const { getKnownWordsLabel } = useKnownWordsOptions()
 
 const jobState = ref<JobState>('loading')
 const downloading = ref('')

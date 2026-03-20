@@ -11,9 +11,9 @@
 
       <div class="topbar-right">
         <template v-if="isAuthenticated">
-          <div class="user-chip soft-pill">
+          <NuxtLink to="/profile" class="user-chip soft-pill">
             <span>{{ displayName }}</span>
-          </div>
+          </NuxtLink>
           <el-button round @click="handleLogout">退出</el-button>
         </template>
         <template v-else>
