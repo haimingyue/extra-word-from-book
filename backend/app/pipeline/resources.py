@@ -17,7 +17,7 @@ def load_lemma_dict() -> dict[str, str]:
         "are": "be",
     }
 
-    with settings.ecdict_path.open("r", encoding="utf-8") as file:
+    with settings.ecdict_file_path.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         for row in reader:
             word = row["word"].lower()
@@ -37,7 +37,7 @@ def load_coca_rank_dict() -> dict[str, int]:
     settings = get_settings()
     rank_dict: dict[str, int] = {}
 
-    with settings.coca_words_path.open("r", encoding="utf-8-sig") as file:
+    with settings.coca_words_file_path.open("r", encoding="utf-8-sig") as file:
         reader = csv.DictReader(file)
         for row in reader:
             word = row["Word"].lower()
@@ -55,7 +55,7 @@ def load_dictionary_words() -> set[str]:
     settings = get_settings()
     words: set[str] = set()
 
-    with settings.ecdict_path.open("r", encoding="utf-8") as file:
+    with settings.ecdict_file_path.open("r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
         for row in reader:
             word = row["word"].strip().lower()
