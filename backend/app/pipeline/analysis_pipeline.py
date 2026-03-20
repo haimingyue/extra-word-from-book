@@ -11,42 +11,8 @@ from app.pipeline.resources import load_coca_rank_dict, load_dictionary_words, l
 from app.schemas.analysis import AnalysisResultResponse, AnalysisSummary, BookSummary, ReadingAdvice, ResultDownloads
 
 
-COMMON_CONTRACTION_REPAIRS = {
-    "arent": "aren't",
-    "cant": "can't",
-    "couldnt": "couldn't",
-    "didnt": "didn't",
-    "doesnt": "doesn't",
-    "dont": "don't",
-    "hadnt": "hadn't",
-    "hasnt": "hasn't",
-    "havent": "haven't",
-    "isnt": "isn't",
-    "shouldnt": "shouldn't",
-    "wasnt": "wasn't",
-    "werent": "weren't",
-    "wont": "won't",
-    "wouldnt": "wouldn't",
-}
-
-CONTRACTION_STEM_BLOCKLIST = {
-    "aren",
-    "couldn",
-    "didn",
-    "doesn",
-    "don",
-    "hadn",
-    "hasn",
-    "haven",
-    "isn",
-    "shouldn",
-    "wasn",
-    "weren",
-    "wouldn",
-    "won",
-}
-
 ABBREVIATION_BLOCKLIST = {"isbn", "jr", "pp"}
+SHORT_WORD_BLOCKLIST = {"b", "c", "d", "er", "h", "j", "k", "m", "mr", "o", "p", "t"}
 SHORT_WORD_WHITELIST = {"a", "am", "an", "as", "at", "be", "by", "do", "go", "he", "i", "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "ox", "so", "to", "up", "us", "we"}
 VALID_TOKEN_PATTERN = re.compile(r"[a-z]+(?:'[a-z]+)?")
 RAW_TOKEN_PATTERN = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+|-[A-Za-z]+)*")
@@ -116,7 +82,7 @@ class AnalysisPipeline:
             )
 
         to_memorize_rows = [row for row in all_rows if row["是否已掌握"] == "false"]
-        coverage_95_rows = self.calculate_coverage_rows(to_memorize_rows, total_word_count)
+        coverage_95_rows = self.calculate_coverage_rows(all_rows, to_memorize_rows, total_word_count)
         reading_level, reading_label, reading_color, reading_message = self.calculate_reading_level(
             len(coverage_95_rows)
         )
@@ -172,12 +138,8 @@ class AnalysisPipeline:
                 if not normalized:
                     continue
 
-                repaired = self.repair_token(normalized, valid_words)
-                if repaired is None:
-                    continue
-
                 if self.should_drop_token(
-                    repaired,
+                    normalized,
                     dictionary_words=dictionary_words,
                     coca_rank_dict=coca_rank_dict,
                     lemma_dict=lemma_dict,
@@ -185,7 +147,7 @@ class AnalysisPipeline:
                 ):
                     continue
 
-                cleaned.append(repaired)
+                cleaned.append(normalized)
         return cleaned
 
     def split_raw_token(self, token: str) -> list[str]:
@@ -200,15 +162,11 @@ class AnalysisPipeline:
         normalized = re.sub(r"[^a-z']", "", normalized)
         if not normalized:
             return ""
+        if "'" in normalized:
+            return ""
         if not VALID_TOKEN_PATTERN.fullmatch(normalized):
             return ""
         return normalized
-
-    def repair_token(self, token: str, valid_words: set[str]) -> str | None:
-        if token in COMMON_CONTRACTION_REPAIRS:
-            repaired = COMMON_CONTRACTION_REPAIRS[token]
-            return repaired if repaired in valid_words else None
-        return token
 
     def should_drop_token(
         self,
@@ -222,9 +180,6 @@ class AnalysisPipeline:
         lemma = lemma_dict.get(token) or lemma_dict.get(base_form)
 
         if token in ABBREVIATION_BLOCKLIST or base_form in ABBREVIATION_BLOCKLIST:
-            return True
-
-        if token in CONTRACTION_STEM_BLOCKLIST or base_form in CONTRACTION_STEM_BLOCKLIST:
             return True
 
         if len(base_form) < 3:
@@ -252,6 +207,8 @@ class AnalysisPipeline:
         coca_rank_dict: dict[str, int],
         lemma_dict: dict[str, str],
     ) -> bool:
+        if token in SHORT_WORD_BLOCKLIST or base_form in SHORT_WORD_BLOCKLIST:
+            return False
         if token in SHORT_WORD_WHITELIST or base_form in SHORT_WORD_WHITELIST:
             return True
         if token in dictionary_words or base_form in dictionary_words:
@@ -282,14 +239,29 @@ class AnalysisPipeline:
         valid_words.update(coca_rank_dict.keys())
         valid_words.update(lemma_dict.keys())
         valid_words.update(lemma_dict.values())
-        valid_words.update(COMMON_CONTRACTION_REPAIRS.values())
         valid_words.update(SHORT_WORD_WHITELIST)
         return valid_words
 
-    def calculate_coverage_rows(self, rows: list[dict[str, object]], total_word_count: int) -> list[dict[str, object]]:
-        cumulative = 0
+    def calculate_coverage_rows(
+        self,
+        all_rows: list[dict[str, object]],
+        to_memorize_rows: list[dict[str, object]],
+        total_word_count: int,
+    ) -> list[dict[str, object]]:
+        if total_word_count <= 0:
+            return []
+
+        known_coverage_count = sum(
+            int(row["书籍出现频率"])
+            for row in all_rows
+            if str(row["是否已掌握"]).lower() == "true"
+        )
+        if known_coverage_count / total_word_count * 100 >= 95:
+            return []
+
+        cumulative = known_coverage_count
         coverage_rows: list[dict[str, object]] = []
-        for row in rows:
+        for row in to_memorize_rows:
             coverage_rows.append(row)
             cumulative += int(row["书籍出现频率"])
             coverage = cumulative / total_word_count * 100 if total_word_count else 0

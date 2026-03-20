@@ -348,6 +348,9 @@
 }
 ```
 
+字段语义补充：
+- `coverage_95_word_count` 表示“在当前已掌握词基础上，为让全书累计覆盖率达到 `95%` 还需要补学的最小核心词数”
+
 ### 6.2 下载 CSV
 `GET /analysis/results/{result_id}/downloads/{type}`
 
