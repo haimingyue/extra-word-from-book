@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(pip3 install:*)",
+      "Bash(C:\\\\Users\\\\Administrator\\\\AppData\\\\Local\\\\Programs\\\\Python\\\\Python311\\\\python.exe -c \"import ebooklib; print\\(ebooklib.__file__\\)\")",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe -c \"import ebooklib; print\\(ebooklib.__file__\\)\")",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe extract_words.py)",
+      "Bash(ls:*)",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe -c \"\nimport sys\nsys.argv = ['', '1.Harry Potter and the Philosophers Stone.epub']\nexec\\(open\\('extract_words.py'\\).read\\(\\).replace\\(\\\\\"'How To Win Friends and Influence People.epub'\\\\\", \\\\\"sys.argv[1] if len\\(sys.argv\\) > 1 else 'How To Win Friends and Influence People.epub'\\\\\"\\)\\)\n\")",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe extract_words.py \"1.Harry Potter and the Philosopher's Stone.epub\")",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe coverage_analysis.py)",
+      "Bash(/c/Users/Administrator/AppData/Local/Programs/Python/Python311/python.exe merge_word_freq.py)",
+      "Bash(del \"HarryPotter_词根词缀排名_原型匹配.csv\")",
+      "Bash(cd:*)",
+      "Bash(npx --version)",
+      "Bash(npx:*)",
+      "Bash(CI=true npx nuxi@latest init frontend --packageManager npm --no-gitInit --force)",
+      "mcp__figma__get_design_context",
+      "Bash(npm run:*)"
+    ]
+  }
+}

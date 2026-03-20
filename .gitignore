@@ -1,0 +1,37 @@
+# 通用缓存与日志
+*.log
+*.tmp
+*.temp
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.venv/
+venv/
+
+# Backend 构建与运行产物
+backend/.venv/
+backend/*.egg-info/
+backend/app.db
+backend/*.db
+backend/storage/
+
+# Frontend 构建产物
+frontend/node_modules/
+frontend/.nuxt/
+frontend/.output/
+
+# 业务输入输出文件不入库
+*.epub
+*.csv
+!ecdict.csv
+!docs/**/*.csv
+
+# 本地临时说明文件
+test.md

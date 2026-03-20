@@ -1,0 +1,86 @@
+from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.middleware.cors import CORSMiddleware
+
+import app.models  # noqa: F401
+from app.api.router import api_router
+from app.core.config import get_settings
+
+
+settings = get_settings()
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description=(
+        "API for EPUB vocabulary analysis.\n\n"
+        "Auth flow for Swagger:\n"
+        "1. Call `POST /api/v1/auth/register` once to create an account.\n"
+        "2. Call `POST /api/v1/auth/login` to get `access_token`.\n"
+        "3. Click `Authorize` in the top-right corner.\n"
+        "4. Paste the raw JWT token value.\n"
+        "5. Call protected endpoints with the saved token."
+    ),
+    docs_url="/docs",
+    redoc_url="/redoc",
+    swagger_ui_parameters={
+        "persistAuthorization": True,
+        "displayRequestDuration": True,
+        "filter": True,
+    },
+    openapi_tags=[
+        {"name": "auth", "description": "Register and login endpoints."},
+        {"name": "books", "description": "Upload EPUB files and view analysis history."},
+        {"name": "analysis", "description": "Create analysis jobs, query results, and download CSV files."},
+        {"name": "vocabularies", "description": "Manage user-known vocabulary imports and vocabulary items."},
+        {"name": "health", "description": "Service health check."},
+    ],
+)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+app.include_router(api_router, prefix=settings.api_v1_prefix)
+
+
+@app.on_event("startup")
+def on_startup() -> None:
+    settings.books_storage_dir.mkdir(parents=True, exist_ok=True)
+    settings.results_storage_dir.mkdir(parents=True, exist_ok=True)
+
+
+def custom_openapi() -> dict:
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=app.openapi_tags,
+    )
+    components = openapi_schema.setdefault("components", {})
+    security_schemes = components.setdefault("securitySchemes", {})
+    security_schemes["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "Paste the JWT access token from `/api/v1/auth/login`.",
+    }
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi
+
+
+@app.get("/health", tags=["health"])
+def healthcheck() -> dict[str, str]:
+    return {"status": "ok"}
