@@ -6,6 +6,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-extra_word}
       POSTGRES_USER: ${POSTGRES_USER:-extra_word}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+    ports:
+      - "127.0.0.1:5432:5432"
     volumes:
       - ../data/postgres:/var/lib/postgresql/data
     healthcheck:
