@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_id
@@ -46,6 +46,7 @@ def list_vocabularies(
 )
 async def upload_vocabulary(
     file: UploadFile = File(...),
+    original_filename: str | None = Form(default=None),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> ApiResponse[VocabularyUploadResponse]:
@@ -53,6 +54,7 @@ async def upload_vocabulary(
         db=db,
         user_id=user_id,
         file=file,
+        name=original_filename,
     )
     return ApiResponse(
         data=VocabularyUploadResponse(

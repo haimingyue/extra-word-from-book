@@ -1,6 +1,11 @@
+import logging
+
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.utils import get_openapi
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 import app.models  # noqa: F401
 from app.api.router import api_router
@@ -8,6 +13,13 @@ from app.core.config import get_settings
 
 
 settings = get_settings()
+logger = logging.getLogger("app")
+
+if not logging.getLogger().handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 app = FastAPI(
     title=settings.app_name,
@@ -50,6 +62,35 @@ app.include_router(api_router, prefix=settings.api_v1_prefix)
 def on_startup() -> None:
     settings.books_storage_dir.mkdir(parents=True, exist_ok=True)
     settings.results_storage_dir.mkdir(parents=True, exist_ok=True)
+
+
+@app.exception_handler(StarletteHTTPException)
+async def handle_http_exception(request, exc: StarletteHTTPException):
+    logger.warning(
+        "http_exception method=%s path=%s status=%s detail=%s",
+        request.method,
+        request.url.path,
+        exc.status_code,
+        exc.detail,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.detail},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def handle_validation_exception(request, exc: RequestValidationError):
+    logger.warning(
+        "validation_exception method=%s path=%s errors=%s",
+        request.method,
+        request.url.path,
+        exc.errors(),
+    )
+    return JSONResponse(
+        status_code=422,
+        content={"detail": exc.errors()},
+    )
 
 
 def custom_openapi() -> dict:

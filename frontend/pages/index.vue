@@ -207,12 +207,29 @@ const onVocabularySelected = (event: Event) => {
   ElMessage.success(`已准备词库：${file.name}`)
 }
 
+const buildSafeUploadFilename = (filename: string, fallbackBase: string, extension: string) => {
+  const normalized = filename.normalize('NFKD')
+  const safeBase = normalized
+    .replace(/\.[^.]+$/, '')
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 80)
+
+  const finalBase = safeBase || fallbackBase
+  return `${finalBase}${extension}`
+}
+
 const uploadBook = async () => {
   if (!selectedBookFile.value) {
     throw new Error('请先选择 EPUB 文件')
   }
   const formData = new FormData()
-  formData.append('file', selectedBookFile.value)
+  formData.append('original_filename', selectedBookFile.value.name)
+  formData.append(
+    'file',
+    selectedBookFile.value,
+    buildSafeUploadFilename(selectedBookFile.value.name, 'book', '.epub')
+  )
   return request<{ book_id: number; original_filename: string; title?: string; language?: string; is_duplicate: boolean }>(
     '/books/upload',
     {
@@ -236,7 +253,12 @@ const syncVocabulary = async () => {
   uploadingVocabulary.value = true
   try {
     const formData = new FormData()
-    formData.append('file', selectedVocabularyFile.value)
+    formData.append('original_filename', selectedVocabularyFile.value.name)
+    formData.append(
+      'file',
+      selectedVocabularyFile.value,
+      buildSafeUploadFilename(selectedVocabularyFile.value.name, 'vocabulary', '.txt')
+    )
     const result = await request<{ vocabulary_id: number; name: string; imported_count: number; deduplicated_count: number }>(
       '/vocabularies/upload',
       {

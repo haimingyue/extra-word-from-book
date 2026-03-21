@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Form, UploadFile
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_current_user_id
@@ -21,18 +21,24 @@ book_service = BookService()
 )
 async def upload_book(
     file: UploadFile = File(...),
+    original_filename: str | None = Form(default=None),
     db: Session = Depends(get_db),
     user_id: int = Depends(get_current_user_id),
 ) -> ApiResponse[BookUploadResponse]:
-    result = await book_service.create_or_get_book(db=db, user_id=user_id, file=file)
+    result = await book_service.create_or_get_book(
+        db=db,
+        user_id=user_id,
+        file=file,
+        original_filename=original_filename,
+    )
     uploaded_book = result.book
     return ApiResponse(
         data=BookUploadResponse(
-        book_id=uploaded_book.id,
-        original_filename=uploaded_book.original_filename,
-        title=uploaded_book.title,
-        language=uploaded_book.language,
-        is_duplicate=result.is_duplicate,
+            book_id=uploaded_book.id,
+            original_filename=uploaded_book.original_filename,
+            title=uploaded_book.title,
+            language=uploaded_book.language,
+            is_duplicate=result.is_duplicate,
         )
     )
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -13,6 +14,9 @@ from app.models.book import Book
 from app.models.user import UserVocabularyItem
 from app.pipeline.analysis_pipeline import AnalysisPipeline
 from app.schemas.analysis import AnalysisJobResponse, AnalysisResultResponse
+
+
+logger = logging.getLogger(__name__)
 
 
 class AnalysisService:
@@ -95,7 +99,9 @@ class AnalysisService:
             job.error_message = str(exc)[:500]
             job.finished_at = datetime.now(UTC)
             db.commit()
-            raise
+            db.refresh(job)
+            logger.exception("analysis_job_failed job_id=%s error=%s", job.id, exc)
+            return self.to_job_response(job=job, result_id=None)
 
     def get_job(self, db: Session, user_id: int, job_id: int) -> AnalysisJobResponse:
         job = db.get(AnalysisJob, job_id)

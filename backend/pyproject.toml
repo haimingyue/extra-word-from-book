@@ -7,7 +7,7 @@ name = "extra-book-word-backend"
 version = "0.1.0"
 description = "FastAPI backend for EPUB vocabulary analysis"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.14"
 dependencies = [
   "alembic>=1.14,<2.0",
   "ebooklib>=0.18,<1.0",

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import logging
+import uuid
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 
@@ -14,6 +15,9 @@ from app.core.config import get_settings
 from app.models.analysis import AnalysisJob, AnalysisJobVocabularySnapshot, AnalysisResult, AnalysisResultItem
 from app.models.book import Book
 from app.schemas.books import HistoryItem
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
@@ -28,31 +32,43 @@ class BookService:
     def __init__(self) -> None:
         self.settings = get_settings()
 
-    async def create_or_get_book(self, db: Session, user_id: int, file: UploadFile) -> BookUploadResult:
-        filename = file.filename or "unknown.epub"
+    async def create_or_get_book(
+        self,
+        db: Session,
+        user_id: int,
+        file: UploadFile,
+        original_filename: str | None = None,
+    ) -> BookUploadResult:
+        filename = (original_filename or "unknown.epub").strip() or "unknown.epub"
         self._validate_extension(filename)
+        storage_root = self.settings.books_storage_dir
+        storage_root.mkdir(parents=True, exist_ok=True)
+        temp_path = storage_root / f"upload-{uuid.uuid4().hex}.tmp"
 
-        content = await file.read()
-        if not content:
-            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty file")
+        try:
+            file_hash, file_size_bytes = await self._save_upload_to_temp(file=file, temp_path=temp_path)
 
-        self._validate_epub_payload(content)
-        file_hash = hashlib.sha256(content).hexdigest()
+            self._validate_epub_file(temp_path)
 
-        existing_book = db.scalar(select(Book).where(Book.file_hash == file_hash))
-        if existing_book is not None:
-            return BookUploadResult(book=existing_book, is_duplicate=True)
+            existing_book = db.scalar(select(Book).where(Book.file_hash == file_hash))
+            if existing_book is not None:
+                temp_path.unlink(missing_ok=True)
+                return BookUploadResult(book=existing_book, is_duplicate=True)
 
-        storage_path = self._build_storage_path(file_hash)
-        storage_path.parent.mkdir(parents=True, exist_ok=True)
-        storage_path.write_bytes(content)
+            storage_path = self._build_storage_path(file_hash)
+            storage_path.parent.mkdir(parents=True, exist_ok=True)
+            temp_path.replace(storage_path)
+        except Exception:
+            temp_path.unlink(missing_ok=True)
+            logger.exception("book_upload_failed user_id=%s filename=%s", user_id, filename)
+            raise
 
         book = Book(
             file_hash=file_hash,
             original_filename=filename,
             title=Path(filename).stem,
             language="en",
-            file_size_bytes=len(content),
+            file_size_bytes=file_size_bytes,
             storage_key=str(storage_path.as_posix()),
             text_extract_status="pending",
             created_by_user_id=user_id,
@@ -134,10 +150,30 @@ class BookService:
                 detail="only .epub files are supported",
             )
 
-    def _validate_epub_payload(self, content: bytes) -> None:
+    async def _save_upload_to_temp(self, file: UploadFile, temp_path: Path) -> tuple[str, int]:
+        hasher = hashlib.sha256()
+        total_size = 0
+
+        with temp_path.open("wb") as target:
+            while True:
+                chunk = await file.read(1024 * 1024)
+                if not chunk:
+                    break
+                total_size += len(chunk)
+                hasher.update(chunk)
+                target.write(chunk)
+
+        if total_size == 0:
+            temp_path.unlink(missing_ok=True)
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty file")
+
+        return hasher.hexdigest(), total_size
+
+    def _validate_epub_file(self, file_path: Path) -> None:
         try:
-            with ZipFile(BytesIO(content)) as archive:
-                mimetype = archive.read("mimetype")
+            with ZipFile(file_path) as archive:
+                names = set(archive.namelist())
+                mimetype = archive.read("mimetype") if "mimetype" in names else b""
         except KeyError as exc:
             raise HTTPException(
                 status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
@@ -149,11 +185,24 @@ class BookService:
                 detail="invalid epub file",
             ) from exc
 
-        if mimetype.decode("utf-8", errors="ignore").strip() != "application/epub+zip":
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="invalid epub mimetype",
-            )
+        mimetype_text = mimetype.decode("utf-8", errors="ignore").strip()
+        if mimetype_text == "application/epub+zip":
+            return
+
+        # 兼容部分可正常阅读但打包不规范的 EPUB。
+        has_container = "META-INF/container.xml" in names
+        has_package_document = any(name.lower().endswith(".opf") for name in names)
+        has_readable_content = any(
+            name.lower().endswith((".xhtml", ".html", ".htm"))
+            for name in names
+        )
+        if has_container and has_package_document and has_readable_content:
+            return
+
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="invalid epub mimetype",
+        )
 
     def _build_storage_path(self, file_hash: str) -> Path:
         return self.settings.books_storage_dir / f"{file_hash}.epub"

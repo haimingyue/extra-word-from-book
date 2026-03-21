@@ -1,14 +1,21 @@
 from __future__ import annotations
 
 import csv
+import logging
 import re
 from collections import Counter
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
+from zipfile import BadZipFile, ZipFile
+
+from fastapi import HTTPException, status
 
 from app.pipeline.resources import load_coca_rank_dict, load_dictionary_words, load_lemma_dict
 from app.schemas.analysis import AnalysisResultResponse, AnalysisSummary, BookSummary, ReadingAdvice, ResultDownloads
+
+
+logger = logging.getLogger(__name__)
 
 
 ABBREVIATION_BLOCKLIST = {"isbn", "jr", "pp"}
@@ -105,14 +112,76 @@ class AnalysisPipeline:
         from ebooklib import epub
 
         all_text: list[str] = []
-        book = epub.read_epub(str(book_path))
-        for item in book.get_items():
-            if item.media_type in ["application/xhtml+xml", "text/html"]:
-                content = item.get_content().decode("utf-8", errors="ignore")
+        try:
+            book = epub.read_epub(str(book_path))
+            for item in book.get_items():
+                if item.media_type not in ["application/xhtml+xml", "text/html", "application/xml", "text/plain"]:
+                    continue
+
+                content = self.decode_item_content(item.get_content())
+                if not content:
+                    continue
+
                 text = self.remove_html_tags(content)
-                if text:
+                if text.strip():
                     all_text.append(text)
+        except Exception:
+            logger.exception("epub_extract_primary_failed book_path=%s", book_path)
+            all_text = []
+
+        if not all_text:
+            all_text = self.extract_book_text_from_zip(book_path)
+
+        if not all_text:
+            logger.warning("epub_extract_no_text book_path=%s", book_path)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="unable to extract readable text from epub",
+            )
+
         return "\n".join(all_text)
+
+    def extract_book_text_from_zip(self, book_path: Path) -> list[str]:
+        try:
+            with ZipFile(book_path) as archive:
+                candidate_names = [
+                    name
+                    for name in archive.namelist()
+                    if self.is_candidate_text_item(name)
+                ]
+                texts: list[str] = []
+                for name in sorted(candidate_names):
+                    content = self.decode_item_content(archive.read(name))
+                    if not content:
+                        continue
+                    text = self.remove_html_tags(content)
+                    if text.strip():
+                        texts.append(text)
+                return texts
+        except (BadZipFile, KeyError, OSError):
+            logger.exception("epub_extract_fallback_failed book_path=%s", book_path)
+            return []
+
+    def is_candidate_text_item(self, name: str) -> bool:
+        lower_name = name.lower()
+        if lower_name.endswith((".opf", ".ncx", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".css", ".ttf", ".otf")):
+            return False
+        if lower_name.startswith("meta-inf/"):
+            return False
+        if "/styles/" in lower_name or "/fonts/" in lower_name or "/images/" in lower_name:
+            return False
+        return lower_name.endswith((".xhtml", ".html", ".htm", ".xml", ".txt"))
+
+    def decode_item_content(self, content: bytes) -> str:
+        if not content:
+            return ""
+
+        for encoding in ("utf-8", "utf-16", "utf-16-le", "utf-16-be", "gb18030", "big5", "latin-1"):
+            try:
+                return content.decode(encoding)
+            except UnicodeDecodeError:
+                continue
+        return content.decode("utf-8", errors="ignore")
 
     def remove_html_tags(self, html_text: str) -> str:
         text = unescape(html_text)
