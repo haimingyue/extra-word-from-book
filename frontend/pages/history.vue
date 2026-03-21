@@ -1,82 +1,58 @@
 <template>
-  <div class="history-page">
-    <header class="history-topbar">
-      <div class="topbar-left">
-        <NuxtLink to="/" class="back-link soft-pill">返回首页</NuxtLink>
-        <NuxtLink to="/vocabulary" class="back-link soft-pill">词库</NuxtLink>
-        <button class="theme-toggle soft-pill" type="button" @click="toggleTheme">
-          <span>{{ theme === 'light' ? '浅色' : '暗色' }}</span>
-        </button>
-      </div>
+  <div class="app-shell section-stack history-page">
+    <AppNavigation />
 
-      <div class="topbar-right">
-        <template v-if="isAuthenticated">
-          <NuxtLink to="/profile" class="user-chip soft-pill">
-            <span>{{ displayName }}</span>
-          </NuxtLink>
-          <el-button round @click="handleLogout">退出</el-button>
-        </template>
-        <template v-else>
-          <el-button round @click="openAuth('login')">登录</el-button>
-          <el-button type="primary" round @click="openAuth('register')">注册</el-button>
-        </template>
-      </div>
-    </header>
+    <PageHero
+      eyebrow="Bookshelf"
+      title="书架与分析历史"
+      description="你的每次词汇分析都会留在这里。可以回看结果、重新分析同一本书，或者直接清理不再需要的记录。"
+      :stats="heroStats"
+    />
 
-    <section class="hero-panel soft-panel">
-      <div>
-        <span class="hero-kicker soft-pill">Bookshelf</span>
-        <h1>书架与历史记录</h1>
-        <p>查看你已经完成的词汇分析，快速回到结果页继续下载 CSV 或判断下一本书是否适合阅读。</p>
-      </div>
-      <div class="hero-meta">
-        <div class="meta-block">
-          <strong>{{ total }}</strong>
-          <span>累计分析结果</span>
-        </div>
-        <div class="meta-block">
-          <strong>{{ items.length }}</strong>
-          <span>当前页记录</span>
-        </div>
-      </div>
-    </section>
-
-    <section v-if="!isAuthenticated" class="empty-panel soft-panel">
-      <h2>登录后查看你的书架</h2>
-      <p>历史记录按用户隔离保存。登录后可以查看你的分析结果、词汇负担和阅读建议。</p>
-      <div class="empty-actions">
+    <EmptyStateCard
+      v-if="!isAuthenticated"
+      eyebrow="Sign In"
+      title="登录后查看你的书架"
+      description="历史记录按用户隔离保存。登录后可以查看分析结果、阅读建议和 CSV 下载入口。"
+    >
+      <template #actions>
         <el-button type="primary" round @click="openAuth('login', loadHistory)">立即登录</el-button>
         <NuxtLink to="/">
           <el-button round>回到首页</el-button>
         </NuxtLink>
-      </div>
-    </section>
+      </template>
+    </EmptyStateCard>
 
-    <section v-else-if="loading" class="loading-panel soft-panel">
+    <section v-else-if="loading" class="surface-panel page-card">
       <el-skeleton animated :rows="8" />
     </section>
 
-    <section v-else-if="items.length" class="history-section">
+    <section v-else-if="items.length" class="section-stack">
       <div class="history-grid">
-        <article v-for="item in items" :key="item.result_id" class="history-card soft-panel">
+        <article v-for="item in items" :key="item.result_id" class="history-card surface-panel">
           <div class="card-top">
-            <span class="file-chip soft-pill">{{ item.original_filename }}</span>
-            <span class="status-badge" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
-          </div>
-
-          <div class="card-copy">
-            <h2>{{ item.title || item.original_filename }}</h2>
-            <p>{{ getKnownWordsLabel(item.known_words_level) }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
-          </div>
-
-          <div class="card-metrics">
-            <div>
-              <strong>{{ formatNumber(item.to_memorize_word_count) }}</strong>
-              <span>待记忆词数</span>
+            <div class="card-badges">
+              <span class="surface-tag">{{ item.original_filename }}</span>
+              <span class="status-badge" :class="statusClass(item.status)">{{ statusLabel(item.status) }}</span>
             </div>
-            <div>
-              <strong>{{ formatDate(item.created_at) }}</strong>
-              <span>分析时间</span>
+            <div class="card-date">{{ formatDate(item.created_at) }}</div>
+          </div>
+
+          <div class="card-main">
+            <div class="card-copy">
+              <h2>{{ item.title || item.original_filename }}</h2>
+              <p>{{ getKnownWordsLabel(item.known_words_level) }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
+            </div>
+
+            <div class="card-metrics">
+              <article class="metric-chip">
+                <span>待记忆词</span>
+                <strong>{{ formatNumber(item.to_memorize_word_count) }}</strong>
+              </article>
+              <article class="metric-chip">
+                <span>分析状态</span>
+                <strong>{{ statusLabel(item.status) }}</strong>
+              </article>
             </div>
           </div>
 
@@ -108,7 +84,7 @@
         </article>
       </div>
 
-      <div class="pagination-row soft-panel">
+      <section class="surface-panel page-card pagination-panel">
         <div class="pagination-copy">
           <strong>第 {{ page }} 页</strong>
           <span>共 {{ total }} 条历史记录</span>
@@ -121,16 +97,21 @@
           :total="total"
           @current-change="handlePageChange"
         />
-      </div>
+      </section>
     </section>
 
-    <section v-else class="empty-panel soft-panel">
-      <h2>你的书架还是空的</h2>
-      <p>先从首页上传一本英文 EPUB，完成分析后，这里会自动展示你的历史记录。</p>
-      <NuxtLink to="/">
-        <el-button type="primary" round>去首页开始分析</el-button>
-      </NuxtLink>
-    </section>
+    <EmptyStateCard
+      v-else
+      eyebrow="No History"
+      title="你的书架还是空的"
+      description="先从首页上传一本英文 EPUB，分析完成后，这里会自动展示历史结果。"
+    >
+      <template #actions>
+        <NuxtLink to="/">
+          <el-button type="primary" round>去首页开始分析</el-button>
+        </NuxtLink>
+      </template>
+    </EmptyStateCard>
 
     <el-dialog
       v-model="reanalyzeVisible"
@@ -139,11 +120,11 @@
       destroy-on-close
     >
       <div class="reanalyze-dialog">
-        <p class="dialog-copy">
+        <p class="muted-copy">
           复用已上传的 EPUB 文件，重新选择一个 COCA 已掌握范围，系统会基于你当前词库再次生成新的分析结果。
         </p>
 
-        <div class="dialog-book soft-panel">
+        <div class="dialog-book">
           <strong>{{ selectedHistoryItem?.title || selectedHistoryItem?.original_filename || '未选择书籍' }}</strong>
           <span>{{ selectedHistoryItem?.original_filename || '' }}</span>
         </div>
@@ -203,8 +184,7 @@ type BookHistoryResponse = {
 const router = useRouter()
 const route = useRoute()
 const { request } = useApi()
-const { theme, toggleTheme } = useTheme()
-const { isAuthenticated, displayName, openAuth, clearAuth } = useAuth()
+const { isAuthenticated, openAuth } = useAuth()
 const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
 const { defaultKnownWordsLevel } = useUserPreferences()
 
@@ -222,6 +202,12 @@ const page = computed(() => {
   const rawPage = Number(route.query.page || 1)
   return Number.isFinite(rawPage) && rawPage > 0 ? rawPage : 1
 })
+
+const heroStats = computed(() => [
+  { label: '累计结果', value: total.value },
+  { label: '当前页记录', value: items.value.length },
+  { label: '登录状态', value: isAuthenticated.value ? '已登录' : '未登录' }
+])
 
 const formatNumber = (value: number) => new Intl.NumberFormat('zh-CN').format(value)
 const formatDate = (value: string) => new Date(value).toLocaleString('zh-CN')
@@ -338,14 +324,6 @@ const handlePageChange = async (nextPage: number) => {
   })
 }
 
-const handleLogout = async () => {
-  clearAuth()
-  items.value = []
-  total.value = 0
-  ElMessage.success('已退出登录')
-  await router.push('/')
-}
-
 watch(
   [() => isAuthenticated.value, () => page.value],
   async ([authenticated]) => {
@@ -363,116 +341,6 @@ watch(
 <style scoped>
 .history-page {
   min-height: 100vh;
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 24px 20px 48px;
-}
-
-.history-topbar,
-.topbar-left,
-.topbar-right,
-.hero-meta,
-.card-top,
-.card-actions,
-.empty-actions,
-.dialog-actions {
-  display: flex;
-  align-items: center;
-}
-
-.history-topbar {
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.topbar-left,
-.topbar-right,
-.hero-meta,
-.card-actions,
-.empty-actions,
-.dialog-actions {
-  gap: 12px;
-}
-
-.back-link,
-.theme-toggle,
-.user-chip {
-  padding: 12px 18px;
-  color: var(--text-main);
-  border: 0;
-}
-
-.hero-panel,
-.loading-panel,
-.empty-panel,
-.pagination-row {
-  margin-top: 24px;
-  padding: 28px;
-}
-
-.hero-panel {
-  display: flex;
-  justify-content: space-between;
-  gap: 20px;
-}
-
-.hero-kicker,
-.file-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 10px 16px;
-  color: var(--primary-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.hero-panel h1 {
-  margin: 18px 0 12px;
-  font-size: clamp(40px, 5vw, 62px);
-  line-height: 0.96;
-  letter-spacing: -0.05em;
-}
-
-.hero-panel p,
-.empty-panel p,
-.card-copy p {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.8;
-}
-
-.hero-meta {
-  flex-wrap: wrap;
-  align-items: stretch;
-}
-
-.meta-block {
-  display: grid;
-  gap: 8px;
-  min-width: 140px;
-  padding: 18px 20px;
-  border-radius: var(--radius-sm);
-  background: var(--surface-3);
-  box-shadow: var(--shadow-inset);
-}
-
-.meta-block strong {
-  font-size: 28px;
-}
-
-.meta-block span,
-.card-metrics span,
-.pagination-copy span {
-  color: var(--text-soft);
-}
-
-.history-section {
-  display: grid;
-  gap: 20px;
-  margin-top: 24px;
 }
 
 .history-grid {
@@ -487,65 +355,118 @@ watch(
   padding: 24px;
 }
 
+.card-top,
+.card-badges,
+.card-actions,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .card-top {
   justify-content: space-between;
-  gap: 12px;
+}
+
+.card-date {
+  color: var(--text-faint);
+  font-size: 13px;
 }
 
 .status-badge {
-  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  min-height: 34px;
+  padding: 0 12px;
   border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .status-completed {
-  color: var(--accent-600);
-  background: rgba(77, 201, 170, 0.14);
+  color: var(--success-500);
+  background: rgba(31, 185, 128, 0.12);
 }
 
 .status-processing,
 .status-pending {
   color: var(--primary-600);
-  background: rgba(58, 141, 255, 0.14);
+  background: rgba(78, 123, 255, 0.12);
 }
 
 .status-failed,
 .status-canceled {
   color: var(--danger-500);
-  background: rgba(255, 123, 123, 0.14);
+  background: rgba(225, 79, 92, 0.12);
 }
 
-.card-copy h2,
-.empty-panel h2 {
-  margin: 0 0 10px;
-  font-size: 28px;
-  line-height: 1.1;
+.card-main {
+  display: grid;
+  gap: 18px;
+}
+
+.card-copy {
+  display: grid;
+  gap: 10px;
+}
+
+.card-copy h2 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1;
+}
+
+.card-copy p,
+.dialog-book span,
+.field-label {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.75;
 }
 
 .card-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px;
+  gap: 14px;
 }
 
-.card-metrics div {
+.metric-chip,
+.dialog-book {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  padding: 18px;
+  border-radius: 20px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
 }
 
-.card-metrics strong,
-.pagination-copy strong {
-  font-size: 18px;
+.metric-chip span,
+.field-label {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
-.pagination-row {
+.metric-chip strong,
+.pagination-copy strong,
+.dialog-book strong {
+  font-size: 20px;
+  line-height: 1.05;
+}
+
+.card-actions {
+  justify-content: flex-start;
+}
+
+.pagination-panel {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
+  gap: 18px;
 }
 
 .pagination-copy {
@@ -553,90 +474,35 @@ watch(
   gap: 6px;
 }
 
+.pagination-copy span {
+  color: var(--text-soft);
+}
+
 .reanalyze-dialog {
   display: grid;
   gap: 18px;
-}
-
-.dialog-copy {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.8;
-}
-
-.dialog-book {
-  display: grid;
-  gap: 6px;
-  padding: 18px 20px;
-}
-
-.dialog-book strong {
-  font-size: 18px;
-}
-
-.dialog-book span,
-.field-label {
-  color: var(--text-soft);
-}
-
-.dialog-field {
-  display: grid;
-  gap: 10px;
-}
-
-.field-label {
-  font-size: 13px;
-  font-weight: 600;
 }
 
 .dialog-select {
   width: 100%;
 }
 
-.dialog-actions {
-  justify-content: flex-end;
-}
-
-@media (max-width: 1024px) {
-  .hero-panel,
-  .pagination-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .history-grid {
+@media (max-width: 980px) {
+  .history-grid,
+  .card-metrics,
+  .pagination-panel {
     grid-template-columns: 1fr;
+    display: grid;
   }
 }
 
 @media (max-width: 720px) {
-  .history-page {
-    padding-inline: 14px;
-  }
-
-  .history-topbar,
-  .topbar-left,
-  .topbar-right,
-  .hero-meta,
-  .card-actions,
-  .empty-actions {
-    flex-wrap: wrap;
-  }
-
-  .hero-panel,
-  .loading-panel,
-  .empty-panel,
-  .pagination-row,
   .history-card {
     padding: 20px;
   }
 
-  .hero-panel h1 {
-    font-size: 36px;
-  }
-
-  .card-metrics {
-    grid-template-columns: 1fr;
+  .card-copy h2 {
+    font-size: 24px;
   }
 }
 </style>

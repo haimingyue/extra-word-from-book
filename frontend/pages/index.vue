@@ -1,145 +1,143 @@
 <template>
-  <div class="home-page">
-    <header class="topbar">
-      <div class="brand-row">
-        <div class="brand-mark soft-panel">
-          <span>Lexi</span>
-        </div>
-        <div>
-          <strong>单词提取学习</strong>
-          <p>把读书前最该记忆的词先挑出来，再进入阅读状态。</p>
-        </div>
+  <div class="app-shell section-stack home-page">
+    <AppNavigation />
+
+    <PageHero
+      accent
+      eyebrow="Reading Workflow"
+      title="把阅读前最该解决的词，先抽出来。"
+      description="上传英文 EPUB，叠加 COCA 已掌握范围和个人词库，系统会自动生成完整词表、待记忆词表和 95% 覆盖核心词表。"
+      :stats="heroStats"
+    >
+      <template #actions>
+        <el-button type="primary" round size="large" :loading="submitting" @click="startAnalysis">
+          开始分析这本书
+        </el-button>
+        <el-button round size="large" @click="triggerBookSelect">先选 EPUB</el-button>
+      </template>
+    </PageHero>
+
+    <section class="home-grid">
+      <div class="section-stack">
+        <section class="workflow-panel surface-panel page-card">
+          <div class="section-heading">
+            <span class="eyebrow">3 Steps</span>
+            <h2>一条连续的阅读准备流程</h2>
+            <p>每个动作都尽量压缩到最短路径，避免上传、设置和反馈分散在页面不同区域。</p>
+          </div>
+
+          <div class="workflow-list">
+            <article class="workflow-step workflow-step-highlight">
+              <div class="step-head">
+                <span class="step-index">01</span>
+                <span class="step-type">Book</span>
+              </div>
+              <h3>选择英文 EPUB</h3>
+              <p>先把书准备好，真正上传会在你点击开始分析时完成。</p>
+              <button class="file-button" type="button" @click="triggerBookSelect">
+                <span>{{ selectedBookName || '选择 EPUB 文件' }}</span>
+                <strong>{{ selectedBookName ? '已准备' : '点击选择' }}</strong>
+              </button>
+            </article>
+
+            <article class="workflow-step">
+              <div class="step-head">
+                <span class="step-index">02</span>
+                <span class="step-type">Vocabulary</span>
+              </div>
+              <h3>导入个人词库</h3>
+              <p>支持一行一个词，或现有 tab 分隔格式。你也可以跳过这步，只用 COCA 范围。</p>
+              <button class="file-button" type="button" @click="triggerVocabularySelect">
+                <span>{{ selectedVocabularyName || '选择 TXT 文件' }}</span>
+                <strong>{{ selectedVocabularyName ? '已准备' : '可选步骤' }}</strong>
+              </button>
+              <el-button
+                round
+                class="secondary-action"
+                :loading="uploadingVocabulary"
+                @click="syncVocabulary"
+              >
+                同步到我的词库
+              </el-button>
+            </article>
+
+            <article class="workflow-step">
+              <div class="step-head">
+                <span class="step-index">03</span>
+                <span class="step-type">Level</span>
+              </div>
+              <h3>设置已掌握范围</h3>
+              <p>可以直接选择 COCA 数值档位，也保留常见英语阶段标签供快速切换。</p>
+              <el-select v-model="knownWordsLevel" size="large" class="level-select">
+                <el-option
+                  v-for="option in knownWordsOptions"
+                  :key="option.value"
+                  :label="option.label"
+                  :value="option.value"
+                />
+              </el-select>
+            </article>
+          </div>
+        </section>
+
+        <section class="status-panel surface-panel page-card">
+          <div class="section-heading">
+            <span class="eyebrow">Ready State</span>
+            <h2>当前提交状态</h2>
+            <p>在真正开始分析前，你可以很快确认这次任务是否已经准备完整。</p>
+          </div>
+
+          <div class="status-grid">
+            <article class="status-card">
+              <span>书籍文件</span>
+              <strong>{{ selectedBookName ? '已选择' : '等待中' }}</strong>
+              <p>{{ selectedBookName || '还没有选择 EPUB 文件' }}</p>
+            </article>
+            <article class="status-card">
+              <span>个人词库</span>
+              <strong>{{ selectedVocabularyName ? '已准备' : '可跳过' }}</strong>
+              <p>{{ selectedVocabularyName || '没有选择也可以直接分析' }}</p>
+            </article>
+            <article class="status-card">
+              <span>当前范围</span>
+              <strong>{{ currentKnownWordsLabel }}</strong>
+              <p>系统会将这一档位与你的个人词库做并集过滤。</p>
+            </article>
+          </div>
+        </section>
       </div>
 
-      <div class="topbar-actions">
-        <button class="theme-toggle soft-pill" type="button" @click="toggleTheme">
-          <span>{{ theme === 'light' ? '浅色' : '暗色' }}</span>
-        </button>
-        <template v-if="isAuthenticated">
-          <NuxtLink to="/vocabulary">
-            <el-button round>词库</el-button>
-          </NuxtLink>
-          <NuxtLink to="/history">
-            <el-button round>书架</el-button>
-          </NuxtLink>
-          <NuxtLink to="/profile" class="user-chip soft-pill">
-            <span>{{ displayName }}</span>
-          </NuxtLink>
-          <el-button round @click="handleLogout">退出</el-button>
-        </template>
-        <template v-else>
-          <el-button round @click="openAuth('login')">登录</el-button>
-          <el-button type="primary" round @click="openAuth('register')">注册</el-button>
-        </template>
-      </div>
-    </header>
-
-    <main class="hero-layout">
-      <section class="hero-copy">
-        <div class="hero-kicker soft-pill">
-          <span>Soft UI Learning Suite</span>
-        </div>
-        <h1>
-          在阅读前，先提取
-          <span>最值得学的词</span>
-        </h1>
-        <p>
-          上传英文 EPUB，结合 COCA 已掌握范围和个人词库，
-          自动筛出待记忆单词、95% 覆盖核心词，并给出是否适合立即阅读的判断。
-        </p>
-
-        <div class="hero-actions">
-          <el-button type="primary" round size="large" :loading="submitting" @click="startAnalysis">
-            开始分析这本书
-          </el-button>
-          <el-button round size="large" @click="triggerBookSelect">先选 EPUB</el-button>
-        </div>
-
-        <div class="insight-grid">
-          <MetricCard label="95% 覆盖" value="核心词优先" caption="自动提取先学词，减少进入阅读前的准备成本。" />
-          <MetricCard label="个人词库" value="TXT 导入" caption="支持导入你的已掌握词表，分析更贴近真实水平。" />
-          <MetricCard label="阅读建议" value="三级判断" caption="强推荐、推荐学习、不建议直读，一眼给出答案。" accent />
-        </div>
-      </section>
-
-      <section class="hero-panel soft-panel">
-        <div class="panel-header">
-          <div>
-            <span class="panel-label">学习入口</span>
-            <h2>上传书籍并建立你的阅读前词表</h2>
+      <aside class="section-stack">
+        <section class="surface-panel page-card aside-panel">
+          <div class="section-heading">
+            <span class="eyebrow">Why It Works</span>
+            <h2>更像产品，而不是工具脚本</h2>
+            <p>这套流程的重点不是“导出所有词”，而是尽快告诉你下一步应该学什么、这本书能不能现在读。</p>
           </div>
-          <div class="status-chip soft-pill">
-            <span>{{ isAuthenticated ? '已登录，可直接提交' : '可先准备，提交时登录' }}</span>
-          </div>
-        </div>
 
-        <div class="panel-grid">
-          <article class="upload-tile soft-panel upload-hero">
-            <div class="tile-top">
-              <div class="icon-shell">EPUB</div>
-              <span class="tile-step">Step 1</span>
+          <div class="insight-list">
+            <div class="insight-item">
+              <strong>95% 覆盖优先级</strong>
+              <p>先抓最影响阅读流畅度的待记忆词，避免一开始就被完整词表压垮。</p>
             </div>
-            <h3>选择英文书籍</h3>
-            <p>支持 `.epub`，点击后只在本地选择文件，真正提交发生在分析开始时。</p>
-            <button class="upload-button" type="button" @click="triggerBookSelect">
-              <span>{{ selectedBookName || '选择 EPUB 文件' }}</span>
-            </button>
-          </article>
-
-          <article class="upload-tile soft-panel">
-            <div class="tile-top">
-              <div class="icon-shell">TXT</div>
-              <span class="tile-step">Step 2</span>
+            <div class="insight-item">
+              <strong>个人词库并集过滤</strong>
+              <p>你已经掌握但不在 COCA 范围内的词，也会被自动排除掉。</p>
             </div>
-            <h3>导入已掌握词库</h3>
-            <p>支持一行一个词，或你现在使用的 tab 分隔导出格式。</p>
-            <button class="upload-button" type="button" @click="triggerVocabularySelect">
-              <span>{{ selectedVocabularyName || '选择 TXT 文件' }}</span>
-            </button>
-            <el-button
-              round
-              class="sync-button"
-              :loading="uploadingVocabulary"
-              @click="syncVocabulary"
-            >
-              同步到我的词库
-            </el-button>
-          </article>
-
-          <article class="upload-tile soft-panel">
-            <div class="tile-top">
-              <div class="icon-shell">COCA</div>
-              <span class="tile-step">Step 3</span>
+            <div class="insight-item">
+              <strong>阅读建议直接判断</strong>
+              <p>结果页会告诉你这本书是适合直读，还是应该先补少量关键词。</p>
             </div>
-            <h3>设置已掌握范围</h3>
-            <p>支持 COCA 数值档位，也支持初中、高中、四级、六级等常用词汇基础标签。</p>
-            <el-select v-model="knownWordsLevel" size="large" class="level-select">
-              <el-option
-                v-for="option in knownWordsOptions"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
-            </el-select>
-          </article>
-        </div>
+          </div>
+        </section>
 
-        <div class="trust-row">
-          <div class="trust-item">
-            <strong>{{ selectedBookName ? '已选择' : '等待中' }}</strong>
-            <span>书籍文件</span>
-          </div>
-          <div class="trust-item">
-            <strong>{{ selectedVocabularyName ? '已准备' : '可选' }}</strong>
-            <span>个人词库</span>
-          </div>
-          <div class="trust-item">
-            <strong>{{ currentKnownWordsLabel }}</strong>
-            <span>当前范围</span>
-          </div>
+        <div class="app-grid-1 metrics-stack">
+          <MetricCard label="95% 覆盖" value="核心词优先" caption="先记最关键的一小部分词，而不是一次性背完整词表。" />
+          <MetricCard label="词库同步" value="TXT 导入" caption="支持上传你自己的已掌握词表，让分析更贴近真实水平。" />
+          <MetricCard label="阅读判断" value="三级建议" caption="完成分析后立即给出可读性判断，帮助你决定下一本书。 " accent />
         </div>
-      </section>
-    </main>
+      </aside>
+    </section>
 
     <input ref="bookInputRef" type="file" accept=".epub" hidden @change="onBookSelected">
     <input ref="vocabularyInputRef" type="file" accept=".txt" hidden @change="onVocabularySelected">
@@ -150,12 +148,9 @@
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
-const { theme, toggleTheme } = useTheme()
 const {
   isAuthenticated,
-  displayName,
-  openAuth,
-  clearAuth
+  openAuth
 } = useAuth()
 const { request } = useApi()
 const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
@@ -172,6 +167,11 @@ const knownWordsLevel = ref(defaultKnownWordsLevel.value)
 const selectedBookName = computed(() => selectedBookFile.value?.name || '')
 const selectedVocabularyName = computed(() => selectedVocabularyFile.value?.name || '')
 const currentKnownWordsLabel = computed(() => getKnownWordsLabel(knownWordsLevel.value))
+const heroStats = computed(() => [
+  { label: '已掌握范围', value: currentKnownWordsLabel.value },
+  { label: '书籍文件', value: selectedBookName.value ? '已准备' : '待选择' },
+  { label: '个人词库', value: selectedVocabularyName.value ? '已准备' : '可选' }
+])
 
 watch(
   () => defaultKnownWordsLevel.value,
@@ -301,287 +301,182 @@ const startAnalysis = async () => {
     submitting.value = false
   }
 }
-
-const handleLogout = () => {
-  clearAuth()
-  ElMessage.success('已退出登录')
-}
 </script>
 
 <style scoped>
 .home-page {
   min-height: 100vh;
-  padding: 20px 20px 48px;
 }
 
-.topbar,
-.hero-layout {
-  width: min(1200px, 100%);
-  margin: 0 auto;
-}
-
-.topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
   gap: 24px;
-  padding: 8px 0 28px;
 }
 
-.brand-row,
-.topbar-actions,
-.hero-actions,
-.tile-top,
-.trust-row {
-  display: flex;
-  align-items: center;
+.workflow-panel,
+.status-panel,
+.aside-panel {
+  display: grid;
+  gap: 24px;
 }
 
-.brand-row {
+.workflow-list,
+.status-grid,
+.insight-list,
+.metrics-stack {
+  display: grid;
   gap: 16px;
 }
 
-.brand-mark {
+.workflow-step {
   display: grid;
-  place-items: center;
-  width: 64px;
-  height: 64px;
+  gap: 14px;
+  padding: 22px;
   border-radius: 24px;
-  color: var(--primary-600);
-  font-weight: 800;
-  letter-spacing: 0.08em;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
 }
 
-.brand-row strong {
-  display: block;
-  font-size: 18px;
+.workflow-step-highlight {
+  background: var(--surface-accent-soft);
 }
 
-.brand-row p {
-  margin: 4px 0 0;
-  color: var(--text-soft);
-}
-
-.topbar-actions {
+.step-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
   gap: 12px;
 }
 
-.theme-toggle,
-.user-chip {
-  padding: 10px 16px;
-  border: 0;
-  color: var(--text-main);
-}
-
-.hero-layout {
-  display: grid;
-  grid-template-columns: 1.05fr 0.95fr;
-  gap: 28px;
-  align-items: start;
-}
-
-.hero-copy {
-  padding: 28px 4px 0;
-}
-
-.hero-kicker,
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 10px 16px;
-  color: var(--primary-600);
+.step-index,
+.step-type {
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 800;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-.hero-copy h1,
-.panel-header h2 {
-  margin: 18px 0 0;
-  font-size: clamp(42px, 6vw, 74px);
-  line-height: 0.96;
-  letter-spacing: -0.06em;
-}
-
-.hero-copy h1 span {
-  color: var(--primary-600);
-}
-
-.hero-copy > p {
-  max-width: 620px;
-  margin: 22px 0 0;
-  color: var(--text-main);
-  font-size: 17px;
-  line-height: 1.9;
-}
-
-.hero-actions {
-  gap: 14px;
-  margin-top: 28px;
-}
-
-.insight-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 38px;
-}
-
-.hero-panel {
-  padding: 28px;
-}
-
-.panel-header {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  align-items: start;
-}
-
-.panel-label {
+.step-index {
   color: var(--accent-600);
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
 }
 
-.panel-header h2 {
-  margin-top: 12px;
-  font-size: clamp(28px, 4vw, 42px);
+.step-type {
+  color: var(--text-faint);
 }
 
-.panel-grid {
-  display: grid;
-  gap: 18px;
-  margin-top: 28px;
+.workflow-step h3,
+.status-card strong,
+.insight-item strong {
+  margin: 0;
 }
 
-.upload-tile {
-  padding: 22px;
+.workflow-step h3 {
+  font-size: 26px;
+  line-height: 1.04;
 }
 
-.upload-hero {
-  background:
-    radial-gradient(circle at top right, rgba(77, 201, 170, 0.18), transparent 28%),
-    var(--surface-1);
+.workflow-step p,
+.status-card p,
+.insight-item p {
+  margin: 0;
+  color: var(--text-soft);
+  line-height: 1.75;
 }
 
-.tile-top {
+.file-button {
+  display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 18px;
+  border-radius: 20px;
+  border: 1px dashed var(--border-strong);
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--text-main);
+  text-align: left;
 }
 
-.icon-shell {
-  display: inline-grid;
-  place-items: center;
-  min-width: 58px;
-  height: 40px;
-  padding: 0 12px;
-  border-radius: 16px;
-  background: rgba(58, 141, 255, 0.12);
+[data-theme="dark"] .file-button {
+  background: rgba(20, 26, 42, 0.78);
+}
+
+.file-button strong {
   color: var(--primary-600);
+  font-size: 14px;
+}
+
+.secondary-action {
+  justify-self: start;
+}
+
+.level-select {
+  width: 100%;
+}
+
+.status-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.status-card {
+  display: grid;
+  gap: 10px;
+  padding: 20px;
+  border-radius: 22px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
+}
+
+.status-card span {
+  color: var(--text-faint);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.12em;
-}
-
-.tile-step {
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 700;
   text-transform: uppercase;
 }
 
-.upload-tile h3 {
-  margin: 18px 0 10px;
+.status-card strong {
   font-size: 24px;
+  line-height: 1;
 }
 
-.upload-tile p {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.8;
+.aside-panel {
+  min-height: 100%;
 }
 
-.upload-button {
-  width: 100%;
-  margin-top: 20px;
-  padding: 18px 20px;
-  border: 1px dashed var(--border-strong);
-  border-radius: 22px;
-  background: var(--surface-3);
-  color: var(--text-main);
-  text-align: left;
-  box-shadow: var(--shadow-inset);
-  cursor: pointer;
-}
-
-.sync-button,
-.level-select {
-  margin-top: 18px;
-  width: 100%;
-}
-
-.trust-row {
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 20px;
-  padding: 18px 4px 4px;
-}
-
-.trust-item {
+.insight-item {
   display: grid;
-  gap: 6px;
+  gap: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-soft);
 }
 
-.trust-item strong {
-  font-size: 18px;
+.insight-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
 }
 
-.trust-item span {
-  color: var(--text-soft);
-  font-size: 13px;
+.app-grid-1 {
+  display: grid;
+  gap: 16px;
 }
 
-@media (max-width: 1120px) {
-  .hero-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .hero-copy {
-    padding-top: 8px;
-  }
-
-  .insight-grid {
+@media (max-width: 1100px) {
+  .home-grid,
+  .status-grid {
     grid-template-columns: 1fr;
   }
 }
 
 @media (max-width: 720px) {
-  .home-page {
-    padding-inline: 14px;
+  .workflow-step h3 {
+    font-size: 22px;
   }
 
-  .topbar,
-  .brand-row,
-  .topbar-actions,
-  .hero-actions,
-  .trust-row {
-    flex-wrap: wrap;
-  }
-
-  .hero-copy h1 {
-    font-size: 40px;
-  }
-
-  .hero-copy > p {
-    font-size: 15px;
-  }
-
-  .hero-panel {
-    padding: 20px;
+  .file-button {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }
 </style>

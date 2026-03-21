@@ -8,7 +8,7 @@
   >
     <template #header>
       <div class="auth-header">
-        <div class="auth-badge soft-pill">
+        <div class="auth-badge">
           <span>{{ authMode === 'login' ? 'Welcome Back' : 'Start Learning' }}</span>
         </div>
         <h2>{{ authMode === 'login' ? '登录后继续你的学习流程' : '创建账号，保存你的学习进度' }}</h2>
@@ -142,23 +142,26 @@ const submitRegister = async () => {
 <style scoped>
 .auth-header {
   display: grid;
-  gap: 12px;
-  padding-right: 32px;
+  gap: 14px;
+  padding-right: 20px;
 }
 
 .auth-badge {
   width: fit-content;
-  padding: 8px 14px;
+  min-height: 34px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(78, 123, 255, 0.1);
   color: var(--primary-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .auth-header h2 {
   margin: 0;
-  font-size: clamp(24px, 3vw, 34px);
+  font-size: clamp(24px, 3vw, 36px);
   line-height: 1.08;
   letter-spacing: -0.03em;
 }
@@ -171,11 +174,29 @@ const submitRegister = async () => {
 
 .auth-submit {
   width: 100%;
-  margin-top: 8px;
+  margin-top: 10px;
   min-height: 52px;
 }
 
 .auth-tabs {
-  margin-top: 4px;
+  margin-top: 8px;
+}
+
+:deep(.el-form-item__label) {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+:deep(.el-tabs__header) {
+  margin-bottom: 18px;
+}
+
+:deep(.el-tabs__item) {
+  min-height: 40px;
+  border-radius: 999px;
+}
+
+:deep(.el-tabs__nav-wrap::after) {
+  display: none;
 }
 </style>

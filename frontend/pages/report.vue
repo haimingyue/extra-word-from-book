@@ -1,104 +1,111 @@
 <template>
-  <div class="report-page">
-    <header class="report-topbar">
-      <div class="topbar-links">
-        <NuxtLink to="/" class="back-link soft-pill">返回首页</NuxtLink>
-        <NuxtLink to="/vocabulary" class="back-link soft-pill">词库</NuxtLink>
-        <NuxtLink to="/history" class="back-link soft-pill">书架</NuxtLink>
-      </div>
-      <div class="report-headline">
-        <span class="headline-kicker soft-pill">Result Summary</span>
-        <h1>阅读前词汇分析结果</h1>
-        <p>查看这本书的词汇负担、95% 覆盖核心词，并直接下载 CSV。</p>
-      </div>
-    </header>
+  <div class="app-shell section-stack report-page">
+    <AppNavigation />
 
-    <main v-if="jobState === 'loading'" class="loading-state soft-panel">
+    <PageHero
+      eyebrow="Result"
+      title="阅读前词汇分析结果"
+      description="查看这本书的词汇负担、95% 覆盖核心词和阅读建议，并直接下载三份 CSV。"
+      :stats="reportStats"
+    />
+
+    <section v-if="jobState === 'loading'" class="surface-panel page-card">
       <el-skeleton animated :rows="6" />
-    </main>
+    </section>
 
-    <main v-else-if="jobState === 'processing'" class="status-layout">
-      <section class="processing-hero soft-panel">
-        <div class="processing-copy">
-          <span class="headline-kicker soft-pill">Analyzing</span>
-          <h2>系统正在提取这本书的核心词汇</h2>
-          <p>我们会解析 EPUB、统计词频、结合你的 COCA 范围和个人词库，完成后自动跳到结果展示。</p>
-          <div class="progress-row">
-            <el-progress
-              :percentage="progressValue"
-              :show-text="false"
-              :indeterminate="true"
-              :duration="3"
-              :stroke-width="10"
-            />
-            <span>{{ progressMessage }}</span>
-          </div>
+    <section v-else-if="jobState === 'processing'" class="status-panel surface-panel page-card">
+      <div class="section-heading">
+        <span class="eyebrow">Analyzing</span>
+        <h2>系统正在提取这本书的核心词汇</h2>
+        <p>我们会解析 EPUB、统计词频、结合你的 COCA 范围和个人词库，完成后自动跳到结果展示。</p>
+      </div>
+
+      <div class="processing-grid">
+        <div class="progress-panel">
+          <el-progress
+            :percentage="progressValue"
+            :show-text="false"
+            :indeterminate="true"
+            :duration="3"
+            :stroke-width="10"
+          />
+          <strong>{{ progressMessage }}</strong>
+          <p class="muted-copy">任务执行中请不要关闭页面，系统会自动轮询并在完成后展示结果。</p>
         </div>
 
-        <div class="processing-meta">
-          <div class="meta-card soft-panel">
-            <strong>#{{ job?.job_id || '--' }}</strong>
+        <div class="meta-list">
+          <article class="meta-card">
             <span>任务编号</span>
-          </div>
-          <div class="meta-card soft-panel">
+            <strong>#{{ job?.job_id || '--' }}</strong>
+          </article>
+          <article class="meta-card">
+            <span>已掌握范围</span>
             <strong>{{ getKnownWordsLabel(job?.known_words_level) }}</strong>
-            <span>当前已掌握范围</span>
-          </div>
-          <div class="meta-card soft-panel">
-            <strong>{{ pollCount }}</strong>
+          </article>
+          <article class="meta-card">
             <span>已轮询次数</span>
-          </div>
+            <strong>{{ pollCount }}</strong>
+          </article>
         </div>
-      </section>
-    </main>
+      </div>
+    </section>
 
-    <main v-else-if="jobState === 'failed'" class="error-state soft-panel">
-      <h2>分析失败</h2>
-      <p>{{ failureMessage }}</p>
-      <div class="error-actions">
+    <EmptyStateCard
+      v-else-if="jobState === 'failed'"
+      eyebrow="Failed"
+      title="分析失败"
+      :description="failureMessage"
+    >
+      <template #actions>
         <el-button type="primary" round @click="retryJobPolling">重新获取状态</el-button>
         <NuxtLink to="/history">
           <el-button round>回到书架</el-button>
         </NuxtLink>
-      </div>
-    </main>
+      </template>
+    </EmptyStateCard>
 
-    <main v-else-if="result" class="report-layout">
-      <section class="summary-grid">
+    <template v-else-if="result">
+      <section class="app-grid-4">
         <MetricCard label="总词数" :value="formatNumber(result.summary.total_word_count)" caption="整本书的词汇总出现次数。" />
         <MetricCard label="唯一词" :value="formatNumber(result.summary.unique_word_count)" caption="去重后的词条数量，用于估算阅读面。" />
-        <MetricCard label="待记忆词" :value="formatNumber(result.summary.to_memorize_word_count)" caption="已排除已掌握范围后，建议关注的词数。" />
+        <MetricCard label="待记忆词" :value="formatNumber(result.summary.to_memorize_word_count)" caption="已排除已掌握范围后，建议重点关注的词数。" />
         <MetricCard label="95% 覆盖" :value="formatNumber(result.summary.coverage_95_word_count)" caption="达到 95% 覆盖所需的核心待记忆词数量。" accent />
       </section>
 
-      <section class="hero-band soft-panel">
-        <div class="hero-band-copy">
-          <span class="book-chip soft-pill">{{ result.book.original_filename }}</span>
-          <h2>{{ result.reading_advice.label }}</h2>
-          <p>{{ result.reading_advice.message }}</p>
-          <div class="meta-row">
-            <div>
-              <strong>{{ getKnownWordsLabel(result.known_words_level) }}</strong>
-              <span>当前已掌握范围</span>
-            </div>
-            <div>
-              <strong>{{ formatDate(result.created_at) }}</strong>
-              <span>分析时间</span>
-            </div>
+      <section class="report-band">
+        <article class="surface-panel page-card band-main">
+          <div class="section-heading">
+            <span class="surface-tag">{{ result.book.original_filename }}</span>
+            <h2>{{ result.reading_advice.label }}</h2>
+            <p>{{ result.reading_advice.message }}</p>
           </div>
-        </div>
-        <div class="advice-shell" :class="result.reading_advice.level">
-          <span class="advice-eyebrow">Reading Advice</span>
+
+          <div class="band-meta">
+            <article class="meta-card">
+              <span>当前已掌握范围</span>
+              <strong>{{ getKnownWordsLabel(result.known_words_level) }}</strong>
+            </article>
+            <article class="meta-card">
+              <span>分析时间</span>
+              <strong>{{ formatDate(result.created_at) }}</strong>
+            </article>
+          </div>
+        </article>
+
+        <article class="surface-panel page-card advice-panel" :class="result.reading_advice.level">
+          <span class="eyebrow advice-eyebrow">Reading Advice</span>
           <strong>{{ result.reading_advice.label }}</strong>
           <p>{{ result.reading_advice.message }}</p>
-        </div>
+        </article>
       </section>
 
       <section class="download-grid">
-        <article v-for="download in downloadCards" :key="download.key" class="download-card soft-panel">
-          <span class="download-label">{{ download.label }}</span>
-          <h3>{{ download.title }}</h3>
-          <p>{{ download.description }}</p>
+        <article v-for="download in downloadCards" :key="download.key" class="surface-panel page-card download-card">
+          <span class="eyebrow">{{ download.label }}</span>
+          <div class="section-heading compact-copy">
+            <h3>{{ download.title }}</h3>
+            <p>{{ download.description }}</p>
+          </div>
           <el-button
             round
             type="primary"
@@ -109,15 +116,20 @@
           </el-button>
         </article>
       </section>
-    </main>
+    </template>
 
-    <main v-else class="error-state soft-panel">
-      <h2>没有找到分析结果</h2>
-      <p>请先从首页上传书籍并完成分析。</p>
-      <NuxtLink to="/">
-        <el-button type="primary" round>回到首页</el-button>
-      </NuxtLink>
-    </main>
+    <EmptyStateCard
+      v-else
+      eyebrow="Empty"
+      title="没有找到分析结果"
+      description="请先从首页上传书籍并完成分析。"
+    >
+      <template #actions>
+        <NuxtLink to="/">
+          <el-button type="primary" round>回到首页</el-button>
+        </NuxtLink>
+      </template>
+    </EmptyStateCard>
   </div>
 </template>
 
@@ -202,6 +214,11 @@ const downloadCards = computed(() => [
 ])
 
 const progressValue = computed(() => Math.min(18 + pollCount.value * 9, 92))
+const reportStats = computed(() => [
+  { label: '任务状态', value: jobState.value === 'completed' ? '已完成' : jobState.value === 'processing' ? '分析中' : '等待中' },
+  { label: '结果编号', value: result.value?.result_id || '--' },
+  { label: '轮询次数', value: pollCount.value }
+])
 
 const progressMessage = computed(() => {
   if (!job.value) {
@@ -337,271 +354,107 @@ onBeforeUnmount(() => {
 <style scoped>
 .report-page {
   min-height: 100vh;
-  width: min(1180px, 100%);
-  margin: 0 auto;
-  padding: 24px 20px 48px;
 }
 
-.report-topbar,
-.topbar-links,
-.hero-band,
-.meta-row,
-.processing-hero,
-.processing-meta,
-.error-actions {
-  display: flex;
-}
-
-.report-topbar {
-  align-items: start;
-  justify-content: space-between;
-  gap: 24px;
-}
-
-.topbar-links {
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.back-link {
-  padding: 12px 18px;
-  color: var(--text-main);
-}
-
-.headline-kicker,
-.book-chip {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 10px 16px;
-  color: var(--accent-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-}
-
-.report-headline {
-  flex: 1;
-}
-
-.report-headline h1 {
-  margin: 18px 0 10px;
-  font-size: clamp(40px, 5vw, 64px);
-  line-height: 0.96;
-  letter-spacing: -0.05em;
-}
-
-.report-headline p {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.8;
-}
-
-.loading-state,
-.error-state {
-  margin-top: 26px;
-  padding: 28px;
-}
-
-.status-layout,
-.report-layout {
-  display: grid;
-  gap: 22px;
-  margin-top: 26px;
-}
-
-.processing-hero,
-.hero-band {
-  justify-content: space-between;
-  gap: 20px;
-  padding: 28px;
-}
-
-.processing-copy,
-.hero-band-copy {
-  display: grid;
-  gap: 16px;
-  max-width: 680px;
-}
-
-.processing-copy h2,
-.hero-band-copy h2 {
-  margin: 0;
-  font-size: clamp(28px, 4vw, 46px);
-  line-height: 1;
-}
-
-.processing-copy p,
-.hero-band-copy p {
-  margin: 0;
-  color: var(--text-main);
-  line-height: 1.9;
-}
-
-.progress-row {
-  display: grid;
-  gap: 10px;
-  margin-top: 8px;
-}
-
-.progress-row span {
-  color: var(--text-soft);
-}
-
-.processing-meta {
-  flex-direction: column;
-  gap: 14px;
-  min-width: 260px;
-}
-
-.meta-card {
-  display: grid;
-  gap: 6px;
-  padding: 20px;
-}
-
-.meta-card strong {
-  font-size: 24px;
-}
-
-.meta-card span,
-.meta-row span,
-.error-state p {
-  color: var(--text-soft);
-}
-
-.summary-grid,
-.download-grid {
+.status-panel,
+.progress-panel,
+.meta-list,
+.compact-copy {
   display: grid;
   gap: 18px;
 }
 
-.summary-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.meta-row {
-  gap: 20px;
-  flex-wrap: wrap;
-}
-
-.meta-row div {
+.processing-grid,
+.report-band {
   display: grid;
-  gap: 6px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(280px, 0.85fr);
+  gap: 20px;
 }
 
-.meta-row strong {
-  font-size: 18px;
+.progress-panel,
+.meta-card,
+.advice-panel {
+  padding: 20px;
+  border-radius: 22px;
+  background: var(--surface-soft);
+  border: 1px solid var(--border-soft);
 }
 
-.advice-shell {
-  min-width: 280px;
-  padding: 24px;
-  border-radius: var(--radius-md);
+.progress-panel strong,
+.meta-card strong,
+.advice-panel strong {
+  font-size: 24px;
+  line-height: 1.04;
+}
+
+.meta-list {
+  align-content: start;
+}
+
+.meta-card span {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.band-main,
+.download-card {
+  display: grid;
+  gap: 20px;
+}
+
+.band-meta {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.advice-panel {
+  align-content: start;
+  background: var(--surface-accent);
   color: var(--text-inverse);
-  background: linear-gradient(160deg, rgba(58, 141, 255, 0.88), rgba(77, 201, 170, 0.72));
-  box-shadow: var(--shadow-card);
+  border: none;
 }
 
-.advice-shell.level_3 {
-  background: linear-gradient(160deg, rgba(255, 123, 123, 0.9), rgba(240, 180, 81, 0.78));
+.advice-panel.level_3 {
+  background: linear-gradient(135deg, #ef5a2d 0%, #f5a623 100%);
 }
 
-.advice-shell.level_1 {
-  background: linear-gradient(160deg, rgba(77, 201, 170, 0.92), rgba(58, 141, 255, 0.74));
+.advice-panel.level_1 {
+  background: linear-gradient(135deg, #1fb980 0%, #4e7bff 100%);
 }
 
 .advice-eyebrow {
-  display: block;
-  margin-bottom: 16px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
-  opacity: 0.86;
+  color: rgba(255, 249, 245, 0.9);
+  background: rgba(255, 255, 255, 0.12);
 }
 
-.advice-shell strong {
-  display: block;
-  font-size: 28px;
-  line-height: 1.06;
-}
-
-.advice-shell p {
-  margin: 14px 0 0;
+.advice-panel p {
+  margin: 0;
+  color: rgba(255, 249, 245, 0.82);
   line-height: 1.8;
-  color: rgba(245, 251, 255, 0.82);
 }
 
 .download-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
-.download-card {
   display: grid;
-  gap: 14px;
-  padding: 24px;
-}
-
-.download-label {
-  color: var(--primary-600);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
 }
 
 .download-card h3 {
   margin: 0;
-  font-size: 24px;
+  font-size: 28px;
+  line-height: 1.02;
 }
 
-.download-card p {
-  margin: 0;
-  color: var(--text-soft);
-  line-height: 1.8;
-}
-
-.error-actions {
-  gap: 12px;
-  margin-top: 18px;
-  flex-wrap: wrap;
-}
-
-@media (max-width: 1024px) {
-  .summary-grid,
-  .download-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .processing-hero,
-  .hero-band {
-    flex-direction: column;
-  }
-}
-
-@media (max-width: 720px) {
-  .report-page {
-    padding-inline: 14px;
-  }
-
-  .report-topbar,
-  .summary-grid,
-  .download-grid {
+@media (max-width: 1100px) {
+  .processing-grid,
+  .report-band,
+  .download-grid,
+  .band-meta {
     grid-template-columns: 1fr;
-    display: grid;
-  }
-
-  .report-headline h1 {
-    font-size: 36px;
-  }
-
-  .processing-hero,
-  .hero-band,
-  .loading-state,
-  .error-state {
-    padding: 20px;
   }
 }
 </style>
