@@ -6,7 +6,7 @@ COPY frontend/package*.json ./
 RUN npm install
 
 COPY frontend/ ./
-RUN npm run build
+RUN NODE_OPTIONS=--max-old-space-size=768 npm run build
 
 FROM node:20-alpine
 
