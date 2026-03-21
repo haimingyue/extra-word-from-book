@@ -75,9 +75,13 @@ class AnalysisService:
             result.coverage_95_file_key = str(coverage_95_path.as_posix())
             db.commit()
 
-            self._persist_result_items(db, result.id, "all_words", pipeline_result.all_words_rows)
-            self._persist_result_items(db, result.id, "to_memorize", pipeline_result.to_memorize_rows)
-            self._persist_result_items(db, result.id, "coverage_95", pipeline_result.coverage_95_rows)
+            self._persist_result_items(
+                db,
+                result.id,
+                pipeline_result.all_words_rows,
+                pipeline_result.to_memorize_rows,
+                pipeline_result.coverage_95_rows,
+            )
 
             job.status = "completed"
             job.finished_at = datetime.now(UTC)
@@ -144,7 +148,16 @@ class AnalysisService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
         return Path(file_key)
 
-    def _persist_result_items(self, db: Session, result_id: int, list_type: str, rows: list[dict[str, object]]) -> None:
+    def _persist_result_items(
+        self,
+        db: Session,
+        result_id: int,
+        all_rows: list[dict[str, object]],
+        to_memorize_rows: list[dict[str, object]],
+        coverage_95_rows: list[dict[str, object]],
+    ) -> None:
+        to_memorize_words = {str(row["单词"]) for row in to_memorize_rows}
+        coverage_95_words = {str(row["单词"]) for row in coverage_95_rows}
         items = [
             AnalysisResultItem(
                 result_id=result_id,
@@ -154,9 +167,11 @@ class AnalysisService:
                 book_frequency=int(row["书籍出现频率"]),
                 coca_rank=int(row["COCA 排行"]) if row["COCA 排行"] not in ("", None) else None,
                 is_known=str(row["是否已掌握"]).lower() == "true",
-                list_type=list_type,
+                is_to_memorize=str(row["单词"]) in to_memorize_words,
+                is_coverage_95=str(row["单词"]) in coverage_95_words,
+                list_type="all_words",
             )
-            for row in rows
+            for row in all_rows
         ]
         db.add_all(items)
         db.commit()

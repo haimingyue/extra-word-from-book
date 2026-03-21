@@ -76,5 +76,7 @@ class AnalysisResultItem(Base):
     book_frequency: Mapped[int] = mapped_column()
     coca_rank: Mapped[int | None] = mapped_column(nullable=True)
     is_known: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_to_memorize: Mapped[bool] = mapped_column(Boolean, default=False)
+    is_coverage_95: Mapped[bool] = mapped_column(Boolean, default=False)
     list_type: Mapped[str] = mapped_column(String(30), index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
