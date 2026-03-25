@@ -101,6 +101,23 @@ git pull
 docker compose up -d --build
 ```
 
+如果服务器内存较小，前端更新建议改为分步执行，先停止当前项目的 `backend/frontend/nginx`，再单独构建前端，避免构建时资源峰值过高：
+
+```bash
+cd /srv/extra-word-from-book/app
+git pull
+docker compose stop backend frontend nginx
+docker compose build frontend
+docker compose up -d backend frontend nginx
+```
+
+如果前端发布完成后还需要再发布后端，可继续执行：
+
+```bash
+docker compose build backend
+docker compose up -d backend
+```
+
 ## 6. 说明
 
 - 当前 `backend` 容器启动时会自动执行 `alembic upgrade head`。

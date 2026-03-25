@@ -8,6 +8,43 @@ export const useApi = () => {
   const config = useRuntimeConfig()
   const { token, clearAuth, openAuth } = useAuth()
 
+  const formatValidationErrors = (detail: unknown) => {
+    if (!Array.isArray(detail)) {
+      return ''
+    }
+
+    const items = detail
+      .map((item) => {
+        const location = Array.isArray(item?.loc) ? item.loc.join('.') : ''
+        const message = typeof item?.msg === 'string' ? item.msg : ''
+        return [location, message].filter(Boolean).join(': ')
+      })
+      .filter(Boolean)
+
+    return items.join('；')
+  }
+
+  const extractErrorMessage = (payload: any) => {
+    if (!payload) {
+      return ''
+    }
+
+    if (typeof payload?.message === 'string' && payload.message) {
+      return payload.message
+    }
+
+    if (typeof payload?.detail === 'string' && payload.detail) {
+      return payload.detail
+    }
+
+    const validationMessage = formatValidationErrors(payload?.detail)
+    if (validationMessage) {
+      return `请求参数错误：${validationMessage}`
+    }
+
+    return ''
+  }
+
   const buildUrl = (path: string) => {
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return path
@@ -30,6 +67,16 @@ export const useApi = () => {
       })
       return response.data
     } catch (error: any) {
+      const payload = error?.data ?? error?.response?._data
+      const message = extractErrorMessage(payload)
+      if (message) {
+        error.message = message
+        error.data = {
+          ...(payload && typeof payload === 'object' ? payload : {}),
+          message
+        }
+      }
+
       const statusCode = error?.response?.status
       if (statusCode === 401) {
         clearAuth()
