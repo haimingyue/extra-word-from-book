@@ -194,7 +194,8 @@
         "title": "Pride and Prejudice",
         "original_filename": "Pride and Prejudice.epub",
         "status": "completed",
-        "known_words_level": 3000,
+        "known_words_mode": "coca_rank",
+        "known_words_value": "3000",
         "to_memorize_word_count": 836,
         "created_at": "2026-03-20T10:00:00Z"
       }
@@ -221,13 +222,15 @@
 ```json
 {
   "book_id": 101,
-  "known_words_level": 3000
+  "known_words_mode": "exam_level",
+  "known_words_value": "四级"
 }
 ```
 
 规则：
-- `known_words_level` 必须在 `1000..15000` 范围内
-- 已掌握词 = `COCA` 词汇 + 当前用户主词库并集
+- `known_words_mode = exam_level` 时，`known_words_value` 必须为 `初中 / 高中 / 四级 / 六级` 之一
+- `known_words_mode = coca_rank` 时，`known_words_value` 必须在 `1000..15000` 范围内
+- 已掌握词 = 当前所选范围 + 当前用户主词库并集
 
 响应体：
 
@@ -237,7 +240,10 @@
   "message": "success",
   "data": {
     "job_id": 901,
-    "status": "pending"
+    "book_id": 101,
+    "status": "pending",
+    "known_words_mode": "exam_level",
+    "known_words_value": "四级"
   }
 }
 ```
@@ -255,7 +261,8 @@
     "job_id": 901,
     "book_id": 101,
     "status": "processing",
-    "known_words_level": 3000,
+    "known_words_mode": "exam_level",
+    "known_words_value": "四级",
     "error_code": null,
     "error_message": null,
     "queued_at": "2026-03-20T10:00:00Z",
@@ -276,7 +283,8 @@
     "job_id": 901,
     "book_id": 101,
     "status": "completed",
-    "known_words_level": 3000,
+    "known_words_mode": "exam_level",
+    "known_words_value": "四级",
     "error_code": null,
     "error_message": null,
     "queued_at": "2026-03-20T10:00:00Z",
@@ -337,7 +345,8 @@
       "color": "yellow",
       "message": "可以阅读，但建议先学习核心词表。"
     },
-    "known_words_level": 3000,
+    "known_words_mode": "exam_level",
+    "known_words_value": "四级",
     "created_at": "2026-03-20T10:00:42Z",
     "downloads": {
       "all_words": "/api/v1/analysis/results/1001/downloads/all_words",
@@ -350,6 +359,7 @@
 
 字段语义补充：
 - `coverage_95_word_count` 表示“在当前已掌握词基础上，为让全书累计覆盖率达到 `95%` 还需要补学的最小核心词数”
+- `known_words_mode = exam_level` 时按词表 `Exam_Level` 过滤，并包含更低阶段的 `小学` 词；`known_words_mode = coca_rank` 时按 `COCA_Rank` 过滤
 
 ### 6.2 下载 CSV
 `GET /analysis/results/{result_id}/downloads/{type}`

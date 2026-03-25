@@ -51,6 +51,25 @@ def load_coca_rank_dict() -> dict[str, int]:
 
 
 @lru_cache
+def load_exam_level_dict() -> dict[str, frozenset[str]]:
+    settings = get_settings()
+    exam_level_dict: dict[str, set[str]] = {}
+    valid_labels = {"小学", "初中", "高中", "四级", "六级", "考研", "GRE", "TOEFL"}
+
+    with settings.coca_words_file_path.open("r", encoding="utf-8-sig") as file:
+        reader = csv.DictReader(file)
+        for row in reader:
+            word = row["Word"].lower()
+            raw_exam_level = row.get("Exam_Level", "").strip()
+            tags = {part.strip() for part in raw_exam_level.split("、") if part.strip() in valid_labels}
+            if not tags:
+                continue
+            exam_level_dict.setdefault(word, set()).update(tags)
+
+    return {word: frozenset(tags) for word, tags in exam_level_dict.items()}
+
+
+@lru_cache
 def load_dictionary_words() -> set[str]:
     settings = get_settings()
     words: set[str] = set()

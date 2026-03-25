@@ -7,7 +7,7 @@
         <span class="eyebrow">Profile</span>
         <div class="section-heading">
           <h1>默认词汇基础</h1>
-          <p>保存后，首页分析、书架重新分析等入口都会自动带入这个默认档位。</p>
+          <p>保存后，首页分析、书架重新分析等入口都会自动带入这个默认范围。</p>
         </div>
 
         <div class="intro-stats">
@@ -16,7 +16,7 @@
             <strong>{{ displayName }}</strong>
           </article>
           <article class="intro-stat">
-            <span>默认档位</span>
+            <span>默认范围</span>
             <strong>{{ currentKnownWordsLabel }}</strong>
           </article>
         </div>
@@ -38,28 +38,34 @@
 
       <article v-else class="surface-panel page-card settings-panel">
         <div class="section-heading compact-heading">
-          <span class="eyebrow">Default Level</span>
-          <h2>选择默认档位</h2>
-          <p>支持 COCA 数值档位，也补充了初中、高中、四级、六级等常用标签。</p>
+          <span class="eyebrow">Default Range</span>
+          <h2>选择默认范围</h2>
+          <p>同一个入口中支持考试标签和 COCA 档位，保存后会同步到首页和书架。</p>
         </div>
 
         <div class="setting-grid">
           <div class="setting-card">
             <span class="field-label">默认选项</span>
-            <el-select v-model="selectedLevel" size="large" class="level-select">
-              <el-option
-                v-for="option in knownWordsOptions"
-                :key="option.value"
-                :label="option.label"
-                :value="option.value"
-              />
+            <el-select v-model="selectedOptionKey" size="large" class="level-select">
+              <el-option-group
+                v-for="group in knownWordsOptionGroups"
+                :key="group.label"
+                :label="group.label"
+              >
+                <el-option
+                  v-for="option in group.options"
+                  :key="option.key"
+                  :label="option.label"
+                  :value="option.key"
+                />
+              </el-option-group>
             </el-select>
           </div>
 
           <div class="setting-card preview-card">
             <span class="field-label">当前预览</span>
             <strong>{{ selectedKnownWordsLabel }}</strong>
-            <p>保存后，首页和书架中的默认档位会同步更新。</p>
+            <p>保存后，首页和书架中的默认范围会同步更新。</p>
           </div>
         </div>
 
@@ -76,29 +82,34 @@
 import { ElMessage } from 'element-plus'
 
 const { isAuthenticated, displayName, openAuth } = useAuth()
-const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
-const { defaultKnownWordsLevel, setDefaultKnownWordsLevel } = useUserPreferences()
+const { knownWordsOptionGroups, getKnownWordsLabel, getKnownWordsOptionKey, parseKnownWordsOptionKey } = useKnownWordsOptions()
+const { defaultKnownWordsSelection, setDefaultKnownWordsSelection } = useUserPreferences()
 
-const selectedLevel = ref(defaultKnownWordsLevel.value)
+const selectedOptionKey = ref(getKnownWordsOptionKey(defaultKnownWordsSelection.value))
+const selectedSelection = computed(() => parseKnownWordsOptionKey(selectedOptionKey.value))
 
-const selectedKnownWordsLabel = computed(() => getKnownWordsLabel(selectedLevel.value))
-const currentKnownWordsLabel = computed(() => getKnownWordsLabel(defaultKnownWordsLevel.value))
+const selectedKnownWordsLabel = computed(() => (
+  getKnownWordsLabel(selectedSelection.value.mode, selectedSelection.value.value)
+))
+const currentKnownWordsLabel = computed(() => (
+  getKnownWordsLabel(defaultKnownWordsSelection.value.mode, defaultKnownWordsSelection.value.value)
+))
 
 watch(
-  () => defaultKnownWordsLevel.value,
+  () => defaultKnownWordsSelection.value,
   (value) => {
-    selectedLevel.value = value
+    selectedOptionKey.value = getKnownWordsOptionKey(value)
   },
   { immediate: true }
 )
 
 const resetLevel = () => {
-  selectedLevel.value = 3000
+  selectedOptionKey.value = 'coca_rank:3000'
 }
 
 const saveLevel = () => {
-  setDefaultKnownWordsLevel(selectedLevel.value)
-  ElMessage.success(`默认词汇基础已保存为 ${getKnownWordsLabel(selectedLevel.value)}`)
+  setDefaultKnownWordsSelection(selectedSelection.value)
+  ElMessage.success(`默认词汇基础已保存为 ${selectedKnownWordsLabel.value}`)
 }
 </script>
 

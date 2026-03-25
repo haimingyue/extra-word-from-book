@@ -35,7 +35,8 @@ def create_job(
         db=db,
         user_id=user_id,
         book_id=payload.book_id,
-        known_words_level=payload.known_words_level,
+        known_words_mode=payload.known_words_mode,
+        known_words_value=payload.known_words_value,
     )
     return ApiResponse(data=job)
 

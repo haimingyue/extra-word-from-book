@@ -13,7 +13,7 @@ from app.models.analysis import AnalysisJob, AnalysisResult, AnalysisResultItem
 from app.models.book import Book
 from app.models.user import UserVocabularyItem
 from app.pipeline.analysis_pipeline import AnalysisPipeline
-from app.schemas.analysis import AnalysisJobResponse, AnalysisResultResponse
+from app.schemas.analysis import AnalysisJobResponse, AnalysisResultResponse, KnownWordsMode
 
 
 logger = logging.getLogger(__name__)
@@ -24,7 +24,14 @@ class AnalysisService:
         self.settings = get_settings()
         self.pipeline = AnalysisPipeline()
 
-    def create_job(self, db: Session, user_id: int, book_id: int, known_words_level: int) -> AnalysisJobResponse:
+    def create_job(
+        self,
+        db: Session,
+        user_id: int,
+        book_id: int,
+        known_words_mode: KnownWordsMode,
+        known_words_value: str,
+    ) -> AnalysisJobResponse:
         book = db.get(Book, book_id)
         if book is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="book not found")
@@ -33,7 +40,9 @@ class AnalysisService:
             user_id=user_id,
             book_id=book_id,
             status="pending",
-            known_words_level=known_words_level,
+            known_words_level=self._legacy_known_words_level(known_words_mode, known_words_value),
+            known_words_mode=known_words_mode.value,
+            known_words_value=known_words_value,
             vocabulary_snapshot_count=0,
         )
         db.add(job)
@@ -48,7 +57,8 @@ class AnalysisService:
             user_known_words = self._load_user_known_words(db, user_id)
             pipeline_result = self.pipeline.run(
                 Path(book.storage_key),
-                known_words_level,
+                known_words_mode,
+                known_words_value,
                 user_known_words=user_known_words,
             )
             result = AnalysisResult(
@@ -128,7 +138,8 @@ class AnalysisService:
             book_id=book.id,
             title=book.title,
             original_filename=book.original_filename,
-            known_words_level=self._get_job_known_words_level(db, result.job_id),
+            known_words_mode=self._get_job_known_words_mode(db, result.job_id),
+            known_words_value=self._get_job_known_words_value(db, result.job_id),
             created_at=created_at,
             total_word_count=result.total_word_count,
             unique_word_count=result.unique_word_count,
@@ -188,11 +199,19 @@ class AnalysisService:
         )
         return set(rows.all())
 
-    def _get_job_known_words_level(self, db: Session, job_id: int) -> int:
+    def _get_job(self, db: Session, job_id: int) -> AnalysisJob:
         job = db.get(AnalysisJob, job_id)
         if job is None:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="job not found")
-        return job.known_words_level
+        return job
+
+    def _get_job_known_words_mode(self, db: Session, job_id: int) -> KnownWordsMode:
+        job = self._get_job(db, job_id)
+        return self._coerce_known_words_mode(job)
+
+    def _get_job_known_words_value(self, db: Session, job_id: int) -> str:
+        job = self._get_job(db, job_id)
+        return self._coerce_known_words_value(job)
 
     def _reading_label(self, level: str) -> str:
         return {
@@ -213,7 +232,8 @@ class AnalysisService:
             job_id=job.id,
             book_id=job.book_id,
             status=job.status,
-            known_words_level=job.known_words_level,
+            known_words_mode=self._coerce_known_words_mode(job),
+            known_words_value=self._coerce_known_words_value(job),
             error_code=job.error_code,
             error_message=job.error_message,
             queued_at=job.queued_at.isoformat() if job.queued_at else "",
@@ -221,3 +241,20 @@ class AnalysisService:
             finished_at=job.finished_at.isoformat() if job.finished_at else None,
             result_id=result_id,
         )
+
+    def _legacy_known_words_level(self, known_words_mode: KnownWordsMode, known_words_value: str) -> int | None:
+        if known_words_mode == KnownWordsMode.coca_rank:
+            return int(known_words_value)
+        return None
+
+    def _coerce_known_words_mode(self, job: AnalysisJob) -> KnownWordsMode:
+        if job.known_words_mode:
+            return KnownWordsMode(job.known_words_mode)
+        return KnownWordsMode.coca_rank
+
+    def _coerce_known_words_value(self, job: AnalysisJob) -> str:
+        if job.known_words_value:
+            return job.known_words_value
+        if job.known_words_level is not None:
+            return str(job.known_words_level)
+        return "3000"

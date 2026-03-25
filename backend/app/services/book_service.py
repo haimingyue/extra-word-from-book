@@ -97,7 +97,8 @@ class BookService:
                 title=book.title,
                 original_filename=book.original_filename,
                 status=job.status,
-                known_words_level=job.known_words_level,
+                known_words_mode=job.known_words_mode or "coca_rank",
+                known_words_value=job.known_words_value or str(job.known_words_level or 3000),
                 to_memorize_word_count=result.to_memorize_word_count,
                 created_at=result.created_at.isoformat() if result.created_at else "",
             )

@@ -47,13 +47,14 @@
 ### 4.1 `validate_input`
 职责：
 - 校验 `book_id` 是否存在
-- 校验 `known_words_level` 是否在 `1000..15000`
+- 校验 `known_words_mode + known_words_value` 组合是否合法
 - 校验任务创建用户是否有权限访问该书
 
 输入：
 - `user_id`
 - `book_id`
-- `known_words_level`
+- `known_words_mode`
+- `known_words_value`
 
 输出：
 - 合法任务上下文
@@ -187,22 +188,30 @@
 
 ### 4.8 `build_known_words_snapshot`
 职责：
-- 根据 `known_words_level` 提取对应 `COCA` 范围词
+- 根据 `known_words_mode + known_words_value` 提取当前已掌握范围
 - 读取当前用户主词库词条
 - 合并为并集
 - 为本次任务保存已掌握词快照
 
 输入：
-- `known_words_level`
+- `known_words_mode`
+- `known_words_value`
 - `user_vocabulary_items`
 - `coca_rank_dictionary`
+- `exam_level_dictionary`
 
 输出：
 - `known_words_set`
 - `analysis_job_vocabulary_snapshots`
 
 关键规则：
-- 当前规则为“`COCA 1000..15000` 下拉选择 + 用户词库并集”
+- 当前规则为“同一个下拉框里选择考试标签或 `COCA 1000..15000` 档位 + 用户词库并集”
+- `exam_level` 模式：
+  - 初中：命中 `小学 / 初中`
+  - 高中：命中 `小学 / 初中 / 高中`
+  - 四级：命中 `小学 / 初中 / 高中 / 四级`
+  - 六级：命中 `小学 / 初中 / 高中 / 四级 / 六级`
+- `coca_rank` 模式：按 `COCA_Rank <= known_words_value` 判定
 - 快照必须任务级保存，不能引用实时词库
 
 ### 4.9 `mark_known_words`

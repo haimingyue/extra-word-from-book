@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
+from app.schemas.analysis import KnownWordsMode
+
 
 class BookUploadResponse(BaseModel):
     book_id: int
@@ -16,7 +18,8 @@ class HistoryItem(BaseModel):
     title: str | None = None
     original_filename: str
     status: str
-    known_words_level: int
+    known_words_mode: KnownWordsMode
+    known_words_value: str
     to_memorize_word_count: int
     created_at: str
 

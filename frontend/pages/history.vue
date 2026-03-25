@@ -41,7 +41,7 @@
           <div class="card-main">
             <div class="card-copy">
               <h2>{{ item.title || item.original_filename }}</h2>
-              <p>{{ getKnownWordsLabel(item.known_words_level) }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
+              <p>{{ getKnownWordsLabel(item.known_words_mode, item.known_words_value) }} 下，本书仍有 {{ formatNumber(item.to_memorize_word_count) }} 个待记忆词。</p>
             </div>
 
             <div class="card-metrics">
@@ -121,7 +121,7 @@
     >
       <div class="reanalyze-dialog">
         <p class="muted-copy">
-          复用已上传的 EPUB 文件，重新选择一个 COCA 已掌握范围，系统会基于你当前词库再次生成新的分析结果。
+          复用已上传的 EPUB 文件，重新选择一个考试标签或 COCA 档位，系统会基于你当前词库再次生成新的分析结果。
         </p>
 
         <div class="dialog-book">
@@ -131,13 +131,19 @@
 
         <div class="dialog-field">
           <span class="field-label">已掌握范围</span>
-          <el-select v-model="reanalyzeKnownWordsLevel" size="large" class="dialog-select">
-            <el-option
-              v-for="option in knownWordsOptions"
-              :key="option.value"
-              :label="option.label"
-              :value="option.value"
-            />
+          <el-select v-model="reanalyzeKnownWordsOptionKey" size="large" class="dialog-select">
+            <el-option-group
+              v-for="group in knownWordsOptionGroups"
+              :key="group.label"
+              :label="group.label"
+            >
+              <el-option
+                v-for="option in group.options"
+                :key="option.key"
+                :label="option.label"
+                :value="option.key"
+              />
+            </el-option-group>
           </el-select>
         </div>
       </div>
@@ -169,7 +175,8 @@ type HistoryItem = {
   title?: string | null
   original_filename: string
   status: string
-  known_words_level: number
+  known_words_mode: 'exam_level' | 'coca_rank'
+  known_words_value: string
   to_memorize_word_count: number
   created_at: string
 }
@@ -185,15 +192,15 @@ const router = useRouter()
 const route = useRoute()
 const { request } = useApi()
 const { isAuthenticated, openAuth } = useAuth()
-const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
-const { defaultKnownWordsLevel } = useUserPreferences()
+const { knownWordsOptionGroups, getKnownWordsLabel, getKnownWordsOptionKey, parseKnownWordsOptionKey } = useKnownWordsOptions()
+const { defaultKnownWordsSelection } = useUserPreferences()
 
 const loading = ref(false)
 const items = ref<HistoryItem[]>([])
 const total = ref(0)
 const pageSize = 12
 const reanalyzeVisible = ref(false)
-const reanalyzeKnownWordsLevel = ref(defaultKnownWordsLevel.value)
+const reanalyzeKnownWordsOptionKey = ref(getKnownWordsOptionKey(defaultKnownWordsSelection.value))
 const selectedHistoryItem = ref<HistoryItem | null>(null)
 const reanalyzingBookId = ref<number | null>(null)
 const deletingResultId = ref<number | null>(null)
@@ -242,7 +249,7 @@ const loadHistory = async () => {
 
 const openReanalyze = (item: HistoryItem) => {
   selectedHistoryItem.value = item
-  reanalyzeKnownWordsLevel.value = defaultKnownWordsLevel.value
+  reanalyzeKnownWordsOptionKey.value = getKnownWordsOptionKey(defaultKnownWordsSelection.value)
   reanalyzeVisible.value = true
 }
 
@@ -253,17 +260,20 @@ const submitReanalyze = async () => {
 
   reanalyzingBookId.value = selectedHistoryItem.value.book_id
   try {
+    const reanalyzeSelection = parseKnownWordsOptionKey(reanalyzeKnownWordsOptionKey.value)
     const job = await request<{
       job_id: number
       book_id: number
       status: string
-      known_words_level: number
+      known_words_mode: 'exam_level' | 'coca_rank'
+      known_words_value: string
       result_id?: number | null
     }>('/analysis/jobs', {
       method: 'POST',
       body: {
         book_id: selectedHistoryItem.value.book_id,
-        known_words_level: reanalyzeKnownWordsLevel.value
+        known_words_mode: reanalyzeSelection.mode,
+        known_words_value: reanalyzeSelection.value
       }
     })
 

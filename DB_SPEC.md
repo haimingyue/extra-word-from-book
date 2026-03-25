@@ -109,7 +109,9 @@
 - `user_id` `bigint` FK -> `users.id`
 - `book_id` `bigint` FK -> `books.id`
 - `status` `varchar(20)` NOT NULL DEFAULT `pending`
-- `known_words_level` `int` NOT NULL
+- `known_words_mode` `varchar(20)` NOT NULL
+- `known_words_value` `varchar(20)` NOT NULL
+- `known_words_level` `int` NULL
 - `vocabulary_snapshot_count` `int` NOT NULL DEFAULT `0`
 - `error_code` `varchar(50)` NULL
 - `error_message` `varchar(500)` NULL
@@ -120,7 +122,11 @@
 - `updated_at` `timestamp` NOT NULL
 
 说明：
-- `known_words_level` 取值范围为 `1000..15000`
+- `known_words_mode` 取值：`exam_level` 或 `coca_rank`
+- `known_words_value`：
+  - `exam_level` 模式下为 `初中 / 高中 / 四级 / 六级`
+  - `coca_rank` 模式下为 `1000..15000`
+- `known_words_level` 为兼容旧数据保留；新逻辑以 `known_words_mode + known_words_value` 为准
 - `vocabulary_snapshot_count` 表示发起任务时纳入并集的用户词条数量
 
 建议枚举：

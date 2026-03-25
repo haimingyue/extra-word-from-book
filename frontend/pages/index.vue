@@ -6,7 +6,7 @@
       accent
       eyebrow="Reading Workflow"
       title="把阅读前最该解决的词，先抽出来。"
-      description="上传英文 EPUB，叠加 COCA 已掌握范围和个人词库，系统会自动生成完整词表、待记忆词表和 95% 覆盖核心词表。"
+      description="上传英文 EPUB，叠加考试标签或 COCA 已掌握范围与个人词库，系统会自动生成完整词表、待记忆词表和 95% 覆盖核心词表。"
       :stats="heroStats"
     >
       <template #actions>
@@ -46,7 +46,7 @@
                 <span class="step-type">Vocabulary</span>
               </div>
               <h3>导入个人词库</h3>
-              <p>支持一行一个词，或现有 tab 分隔格式。你也可以跳过这步，只用 COCA 范围。</p>
+              <p>支持一行一个词，或现有 tab 分隔格式。你也可以跳过这步，只用考试标签或 COCA 档位。</p>
               <button class="file-button" type="button" @click="triggerVocabularySelect">
                 <span>{{ selectedVocabularyName || '选择 TXT 文件' }}</span>
                 <strong>{{ selectedVocabularyName ? '已准备' : '可选步骤' }}</strong>
@@ -67,14 +67,20 @@
                 <span class="step-type">Level</span>
               </div>
               <h3>设置已掌握范围</h3>
-              <p>可以直接选择 COCA 数值档位，也保留常见英语阶段标签供快速切换。</p>
-              <el-select v-model="knownWordsLevel" size="large" class="level-select">
-                <el-option
-                  v-for="option in knownWordsOptions"
-                  :key="option.value"
-                  :label="option.label"
-                  :value="option.value"
-                />
+              <p>同一个入口里同时支持考试标签和 COCA 档位，任选一种即可。</p>
+              <el-select v-model="knownWordsOptionKey" size="large" class="level-select">
+                <el-option-group
+                  v-for="group in knownWordsOptionGroups"
+                  :key="group.label"
+                  :label="group.label"
+                >
+                  <el-option
+                    v-for="option in group.options"
+                    :key="option.key"
+                    :label="option.label"
+                    :value="option.key"
+                  />
+                </el-option-group>
               </el-select>
             </article>
           </div>
@@ -101,7 +107,7 @@
             <article class="status-card">
               <span>当前范围</span>
               <strong>{{ currentKnownWordsLabel }}</strong>
-              <p>系统会将这一档位与你的个人词库做并集过滤。</p>
+              <p>系统会将这一范围与你的个人词库做并集过滤。</p>
             </article>
           </div>
         </section>
@@ -122,7 +128,7 @@
             </div>
             <div class="insight-item">
               <strong>个人词库并集过滤</strong>
-              <p>你已经掌握但不在 COCA 范围内的词，也会被自动排除掉。</p>
+              <p>你已经掌握但不在当前考试标签或 COCA 档位内的词，也会被自动排除掉。</p>
             </div>
             <div class="insight-item">
               <strong>阅读建议直接判断</strong>
@@ -153,8 +159,8 @@ const {
   openAuth
 } = useAuth()
 const { request } = useApi()
-const { knownWordsOptions, getKnownWordsLabel } = useKnownWordsOptions()
-const { defaultKnownWordsLevel } = useUserPreferences()
+const { knownWordsOptionGroups, getKnownWordsLabel, getKnownWordsOptionKey, parseKnownWordsOptionKey } = useKnownWordsOptions()
+const { defaultKnownWordsSelection } = useUserPreferences()
 
 const bookInputRef = ref<HTMLInputElement | null>(null)
 const vocabularyInputRef = ref<HTMLInputElement | null>(null)
@@ -162,11 +168,14 @@ const selectedBookFile = ref<File | null>(null)
 const selectedVocabularyFile = ref<File | null>(null)
 const submitting = ref(false)
 const uploadingVocabulary = ref(false)
-const knownWordsLevel = ref(defaultKnownWordsLevel.value)
+const knownWordsOptionKey = ref(getKnownWordsOptionKey(defaultKnownWordsSelection.value))
 
 const selectedBookName = computed(() => selectedBookFile.value?.name || '')
 const selectedVocabularyName = computed(() => selectedVocabularyFile.value?.name || '')
-const currentKnownWordsLabel = computed(() => getKnownWordsLabel(knownWordsLevel.value))
+const currentKnownWordsSelection = computed(() => parseKnownWordsOptionKey(knownWordsOptionKey.value))
+const currentKnownWordsLabel = computed(() => (
+  getKnownWordsLabel(currentKnownWordsSelection.value.mode, currentKnownWordsSelection.value.value)
+))
 const heroStats = computed(() => [
   { label: '已掌握范围', value: currentKnownWordsLabel.value },
   { label: '书籍文件', value: selectedBookName.value ? '已准备' : '待选择' },
@@ -174,9 +183,9 @@ const heroStats = computed(() => [
 ])
 
 watch(
-  () => defaultKnownWordsLevel.value,
+  () => defaultKnownWordsSelection.value,
   (value) => {
-    knownWordsLevel.value = value
+    knownWordsOptionKey.value = getKnownWordsOptionKey(value)
   },
   { immediate: true }
 )
@@ -301,13 +310,15 @@ const startAnalysis = async () => {
       job_id: number
       book_id: number
       status: string
-      known_words_level: number
+      known_words_mode: 'exam_level' | 'coca_rank'
+      known_words_value: string
       result_id?: number | null
     }>('/analysis/jobs', {
       method: 'POST',
       body: {
         book_id: uploadedBook.book_id,
-        known_words_level: knownWordsLevel.value
+        known_words_mode: currentKnownWordsSelection.value.mode,
+        known_words_value: currentKnownWordsSelection.value.value
       }
     })
 

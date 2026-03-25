@@ -11,8 +11,15 @@ from zipfile import BadZipFile, ZipFile
 
 from fastapi import HTTPException, status
 
-from app.pipeline.resources import load_coca_rank_dict, load_dictionary_words, load_lemma_dict
-from app.schemas.analysis import AnalysisResultResponse, AnalysisSummary, BookSummary, ReadingAdvice, ResultDownloads
+from app.pipeline.resources import load_coca_rank_dict, load_dictionary_words, load_exam_level_dict, load_lemma_dict
+from app.schemas.analysis import (
+    AnalysisResultResponse,
+    AnalysisSummary,
+    BookSummary,
+    KnownWordsMode,
+    ReadingAdvice,
+    ResultDownloads,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -43,12 +50,19 @@ class PipelineResult:
 class AnalysisPipeline:
     """Clean, normalize, filter, and rank book vocabulary for learning output."""
 
-    def run(self, book_path: Path, known_words_level: int, user_known_words: set[str] | None = None) -> PipelineResult:
+    def run(
+        self,
+        book_path: Path,
+        known_words_mode: KnownWordsMode,
+        known_words_value: str,
+        user_known_words: set[str] | None = None,
+    ) -> PipelineResult:
         raw_text = self.extract_book_text(book_path)
         raw_tokens = self.extract_words(raw_text)
 
         lemma_dict = load_lemma_dict()
         coca_rank_dict = load_coca_rank_dict()
+        exam_level_dict = load_exam_level_dict()
         dictionary_words = load_dictionary_words()
         valid_words = self.build_valid_word_set(dictionary_words, coca_rank_dict, lemma_dict)
 
@@ -65,15 +79,18 @@ class AnalysisPipeline:
         user_known_words = user_known_words or set()
 
         all_rows = []
-        known_word_cutoff = known_words_level
+        known_word_cutoff = self.parse_coca_threshold(known_words_mode, known_words_value)
+        allowed_exam_tags = self.get_allowed_exam_tags(known_words_mode, known_words_value)
 
         for index, (word, frequency) in enumerate(ranked_words, start=1):
             lemma = lemma_dict.get(word, "")
             coca_rank = coca_rank_dict.get(word)
             if coca_rank is None and lemma:
                 coca_rank = coca_rank_dict.get(lemma)
+            exam_tags = exam_level_dict.get(word) or (exam_level_dict.get(lemma) if lemma else None)
             is_known = (
-                (coca_rank is not None and coca_rank <= known_word_cutoff)
+                (known_word_cutoff is not None and coca_rank is not None and coca_rank <= known_word_cutoff)
+                or bool(allowed_exam_tags and exam_tags and allowed_exam_tags.intersection(exam_tags))
                 or word in user_known_words
                 or (lemma in user_known_words if lemma else False)
             )
@@ -107,6 +124,36 @@ class AnalysisPipeline:
             to_memorize_rows=self.resequence_rows(to_memorize_rows),
             coverage_95_rows=self.resequence_rows(coverage_95_rows),
         )
+
+    def parse_coca_threshold(self, known_words_mode: KnownWordsMode, known_words_value: str) -> int | None:
+        if known_words_mode != KnownWordsMode.coca_rank:
+            return None
+
+        threshold = int(known_words_value)
+        if threshold < 1000 or threshold > 15000:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="known_words_value must be within 1000..15000 for coca_rank mode",
+            )
+        return threshold
+
+    def get_allowed_exam_tags(self, known_words_mode: KnownWordsMode, known_words_value: str) -> set[str]:
+        if known_words_mode != KnownWordsMode.exam_level:
+            return set()
+
+        allowed_map = {
+            "初中": {"小学", "初中"},
+            "高中": {"小学", "初中", "高中"},
+            "四级": {"小学", "初中", "高中", "四级"},
+            "六级": {"小学", "初中", "高中", "四级", "六级"},
+        }
+        allowed_tags = allowed_map.get(known_words_value)
+        if allowed_tags is None:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="known_words_value must be one of 初中、高中、四级、六级 for exam_level mode",
+            )
+        return allowed_tags
 
     def extract_book_text(self, book_path: Path) -> str:
         from ebooklib import epub
@@ -368,7 +415,8 @@ class AnalysisPipeline:
         book_id: int,
         title: str | None,
         original_filename: str,
-        known_words_level: int,
+        known_words_mode: KnownWordsMode,
+        known_words_value: str,
         created_at: str,
         total_word_count: int,
         unique_word_count: int,
@@ -399,7 +447,8 @@ class AnalysisPipeline:
                 color=reading_color,
                 message=reading_message,
             ),
-            known_words_level=known_words_level,
+            known_words_mode=known_words_mode,
+            known_words_value=known_words_value,
             created_at=created_at,
             downloads=ResultDownloads(
                 all_words=f"/api/v1/analysis/results/{result_id}/downloads/all_words",

@@ -17,7 +17,7 @@
       <div class="section-heading">
         <span class="eyebrow">Analyzing</span>
         <h2>系统正在提取这本书的核心词汇</h2>
-        <p>我们会解析 EPUB、统计词频、结合你的 COCA 范围和个人词库，完成后自动跳到结果展示。</p>
+        <p>我们会解析 EPUB、统计词频，并结合你选择的考试标签或 COCA 档位与个人词库，完成后自动跳到结果展示。</p>
       </div>
 
       <div class="processing-grid">
@@ -40,7 +40,7 @@
           </article>
           <article class="meta-card">
             <span>已掌握范围</span>
-            <strong>{{ getKnownWordsLabel(job?.known_words_level) }}</strong>
+            <strong>{{ getKnownWordsLabel(job?.known_words_mode, job?.known_words_value) }}</strong>
           </article>
           <article class="meta-card">
             <span>已轮询次数</span>
@@ -83,7 +83,7 @@
           <div class="band-meta">
             <article class="meta-card">
               <span>当前已掌握范围</span>
-              <strong>{{ getKnownWordsLabel(result.known_words_level) }}</strong>
+              <strong>{{ getKnownWordsLabel(result.known_words_mode, result.known_words_value) }}</strong>
             </article>
             <article class="meta-card">
               <span>分析时间</span>
@@ -140,7 +140,8 @@ type AnalysisJob = {
   job_id: number
   book_id: number
   status: string
-  known_words_level: number
+  known_words_mode: 'exam_level' | 'coca_rank'
+  known_words_value: string
   error_code?: string | null
   error_message?: string | null
   queued_at: string
@@ -169,7 +170,8 @@ type AnalysisResult = {
     color: string
     message: string
   }
-  known_words_level: number
+  known_words_mode: 'exam_level' | 'coca_rank'
+  known_words_value: string
   created_at: string
   downloads: Record<string, string>
 }

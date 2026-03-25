@@ -5,7 +5,7 @@
     <PageHero
       eyebrow="Vocabulary"
       title="个人词库管理"
-      description="导入已掌握词、手动补充词条，并在分析书籍时与 COCA 范围做并集过滤。这里的重点是让管理过程更轻、更清楚。"
+      description="导入已掌握词、手动补充词条，并在分析书籍时与考试标签或 COCA 档位做并集过滤。这里的重点是让管理过程更轻、更清楚。"
       :stats="heroStats"
     />
 
