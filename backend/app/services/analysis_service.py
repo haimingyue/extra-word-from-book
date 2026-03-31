@@ -89,13 +89,14 @@ class AnalysisService:
             result.coverage_95_file_key = str(coverage_95_path.as_posix())
             db.commit()
 
-            self._persist_result_items(
-                db,
-                result.id,
-                pipeline_result.all_words_rows,
-                pipeline_result.to_memorize_rows,
-                pipeline_result.coverage_95_rows,
-            )
+            if self.settings.enable_analysis_result_items:
+                self._persist_result_items(
+                    db,
+                    result.id,
+                    pipeline_result.all_words_rows,
+                    pipeline_result.to_memorize_rows,
+                    pipeline_result.coverage_95_rows,
+                )
 
             job.status = "completed"
             job.finished_at = datetime.now(UTC)

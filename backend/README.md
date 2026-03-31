@@ -13,6 +13,12 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
+## Key Environment Variables
+
+- `APP_ENABLE_ANALYSIS_RESULT_ITEMS=true`
+
+将其设置为 `false` 后，新分析任务会停止写入 `analysis_result_items`，但不会影响汇总结果与 CSV 下载。
+
 ## Auth
 
 Current APIs (except `/auth/*`) require:

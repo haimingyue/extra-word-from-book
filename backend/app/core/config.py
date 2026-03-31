@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     jwt_secret_key: str = token_urlsafe(32)
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7
+    enable_analysis_result_items: bool = True
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_", extra="ignore")
 
