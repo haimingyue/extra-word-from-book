@@ -5,6 +5,7 @@ from app.schemas.analysis import KnownWordsMode
 
 class BookUploadResponse(BaseModel):
     book_id: int
+    file_type: str
     original_filename: str
     title: str | None = None
     language: str | None = None
@@ -15,6 +16,7 @@ class HistoryItem(BaseModel):
     result_id: int
     job_id: int
     book_id: int
+    file_type: str
     title: str | None = None
     original_filename: str
     status: str

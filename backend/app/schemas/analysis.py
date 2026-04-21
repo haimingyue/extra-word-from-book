@@ -88,6 +88,7 @@ class AnalysisJobResponse(BaseModel):
 
 class BookSummary(BaseModel):
     book_id: int
+    file_type: str
     title: str | None = None
     original_filename: str
 

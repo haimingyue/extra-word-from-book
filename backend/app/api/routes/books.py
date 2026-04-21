@@ -15,8 +15,8 @@ book_service = BookService()
 @router.post(
     "/upload",
     response_model=ApiResponse[BookUploadResponse],
-    summary="Upload EPUB",
-    description="Upload an EPUB file, validate it, and deduplicate it by file hash.",
+    summary="Upload Book File",
+    description="Upload an EPUB or TXT book file, validate it, and deduplicate it by file hash.",
     responses={401: {"model": ErrorResponse}, 413: {"model": ErrorResponse}, 415: {"model": ErrorResponse}},
 )
 async def upload_book(
@@ -35,6 +35,7 @@ async def upload_book(
     return ApiResponse(
         data=BookUploadResponse(
             book_id=uploaded_book.id,
+            file_type=uploaded_book.file_type,
             original_filename=uploaded_book.original_filename,
             title=uploaded_book.title,
             language=uploaded_book.language,

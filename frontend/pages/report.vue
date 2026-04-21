@@ -17,7 +17,7 @@
       <div class="section-heading">
         <span class="eyebrow">Analyzing</span>
         <h2>系统正在提取这本书的核心词汇</h2>
-        <p>我们会解析 EPUB、统计词频，并结合你选择的考试标签或 COCA 档位与个人词库，完成后自动跳到结果展示。</p>
+        <p>我们会解析 EPUB 或纯英文 TXT、统计词频，并结合你选择的考试标签或 COCA 档位与个人词库，完成后自动跳到结果展示。</p>
       </div>
 
       <div class="processing-grid">
@@ -157,6 +157,7 @@ type AnalysisResult = {
   job_id: number
   book: {
     book_id: number
+    file_type: 'epub' | 'txt'
     title?: string | null
     original_filename: string
   }

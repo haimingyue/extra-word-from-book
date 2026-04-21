@@ -77,6 +77,7 @@ class AnalysisService:
             user_known_words = self._load_user_known_words(db, user_id)
             pipeline_result = self.pipeline.run(
                 Path(book.storage_key),
+                book.file_type,
                 known_words_mode,
                 known_words_value,
                 user_known_words=user_known_words,
@@ -159,6 +160,7 @@ class AnalysisService:
             result_id=result.id,
             job_id=result.job_id,
             book_id=book.id,
+            file_type=book.file_type,
             title=book.title,
             original_filename=book.original_filename,
             known_words_mode=self._get_job_known_words_mode(db, result.job_id),

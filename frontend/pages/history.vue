@@ -104,7 +104,7 @@
       v-else
       eyebrow="No History"
       title="你的书架还是空的"
-      description="先从首页上传一本英文 EPUB，分析完成后，这里会自动展示历史结果。"
+      description="先从首页上传一本英文 EPUB 或纯英文 TXT，分析完成后，这里会自动展示历史结果。"
     >
       <template #actions>
         <NuxtLink to="/">
@@ -121,7 +121,7 @@
     >
       <div class="reanalyze-dialog">
         <p class="muted-copy">
-          复用已上传的 EPUB 文件，重新选择一个考试标签或 COCA 档位，系统会基于你当前词库再次生成新的分析结果。
+          复用已上传的书籍文件，重新选择一个考试标签或 COCA 档位，系统会基于你当前词库再次生成新的分析结果。
         </p>
 
         <div class="dialog-book">
@@ -172,6 +172,7 @@ type HistoryItem = {
   result_id: number
   job_id: number
   book_id: number
+  file_type: 'epub' | 'txt'
   title?: string | null
   original_filename: string
   status: string

@@ -6,14 +6,14 @@
       accent
       eyebrow="Reading Workflow"
       title="把阅读前最该解决的词，先抽出来。"
-      description="上传英文 EPUB，叠加考试标签或 COCA 已掌握范围与个人词库，系统会自动生成完整词表、待记忆词表和 95% 覆盖核心词表。"
+      description="上传英文 EPUB 或纯英文 TXT，叠加考试标签或 COCA 已掌握范围与个人词库，系统会自动生成完整词表、待记忆词表和 95% 覆盖核心词表。"
       :stats="heroStats"
     >
       <template #actions>
         <el-button type="primary" round size="large" :loading="submitting" @click="startAnalysis">
           开始分析这本书
         </el-button>
-        <el-button round size="large" @click="triggerBookSelect">先选 EPUB</el-button>
+        <el-button round size="large" @click="triggerBookSelect">先选书籍文件</el-button>
       </template>
     </PageHero>
 
@@ -32,10 +32,10 @@
                 <span class="step-index">01</span>
                 <span class="step-type">Book</span>
               </div>
-              <h3>选择英文 EPUB</h3>
-              <p>先把书准备好，真正上传会在你点击开始分析时完成。</p>
+              <h3>选择英文 EPUB / TXT</h3>
+              <p>支持 EPUB 或纯英文正文 TXT，真正上传会在你点击开始分析时完成。</p>
               <button class="file-button" type="button" @click="triggerBookSelect">
-                <span>{{ selectedBookName || '选择 EPUB 文件' }}</span>
+                <span>{{ selectedBookName || '选择 EPUB / TXT 文件' }}</span>
                 <strong>{{ selectedBookName ? '已准备' : '点击选择' }}</strong>
               </button>
             </article>
@@ -97,7 +97,7 @@
             <article class="status-card">
               <span>书籍文件</span>
               <strong>{{ selectedBookName ? '已选择' : '等待中' }}</strong>
-              <p>{{ selectedBookName || '还没有选择 EPUB 文件' }}</p>
+              <p>{{ selectedBookName || '还没有选择 EPUB / TXT 文件' }}</p>
             </article>
             <article class="status-card">
               <span>个人词库</span>
@@ -145,7 +145,7 @@
       </aside>
     </section>
 
-    <input ref="bookInputRef" type="file" accept=".epub" hidden @change="onBookSelected">
+    <input ref="bookInputRef" type="file" accept=".epub,.txt" hidden @change="onBookSelected">
     <input ref="vocabularyInputRef" type="file" accept=".txt" hidden @change="onVocabularySelected">
   </div>
 </template>
@@ -171,6 +171,7 @@ const uploadingVocabulary = ref(false)
 const knownWordsOptionKey = ref(getKnownWordsOptionKey(defaultKnownWordsSelection.value))
 const MAX_BOOK_UPLOAD_SIZE_MB = 100
 const MAX_BOOK_UPLOAD_SIZE_BYTES = MAX_BOOK_UPLOAD_SIZE_MB * 1024 * 1024
+const BOOK_FILE_ACCEPTED_EXTENSIONS = ['.epub', '.txt']
 
 const selectedBookName = computed(() => selectedBookFile.value?.name || '')
 const selectedVocabularyName = computed(() => selectedVocabularyFile.value?.name || '')
@@ -206,12 +207,12 @@ const resetInputValue = (event: Event) => {
 
 const validateBookFile = (file: File) => {
   const filename = file.name.toLowerCase()
-  if (!filename.endsWith('.epub')) {
-    ElMessage.error('只能上传 EPUB 文件')
+  if (!BOOK_FILE_ACCEPTED_EXTENSIONS.some(extension => filename.endsWith(extension))) {
+    ElMessage.error('只能上传 EPUB 或 TXT 书籍文件')
     return false
   }
   if (file.size > MAX_BOOK_UPLOAD_SIZE_BYTES) {
-    ElMessage.error(`EPUB 文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB，请压缩后重试`)
+    ElMessage.error(`书籍文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB，请压缩后重试`)
     return false
   }
   return true
@@ -240,7 +241,7 @@ const onVocabularySelected = (event: Event) => {
   ElMessage.success(`已准备词库：${file.name}`)
 }
 
-const buildSafeUploadFilename = (filename: string, fallbackBase: string, extension: string) => {
+const buildSafeUploadFilename = (filename: string, fallbackBase: string, extension?: string) => {
   const normalized = filename.normalize('NFKD')
   const safeBase = normalized
     .replace(/\.[^.]+$/, '')
@@ -249,24 +250,25 @@ const buildSafeUploadFilename = (filename: string, fallbackBase: string, extensi
     .slice(0, 80)
 
   const finalBase = safeBase || fallbackBase
-  return `${finalBase}${extension}`
+  const resolvedExtension = extension || filename.match(/\.[^.]+$/)?.[0]?.toLowerCase() || ''
+  return `${finalBase}${resolvedExtension}`
 }
 
 const uploadBook = async () => {
   if (!selectedBookFile.value) {
-    throw new Error('请先选择 EPUB 文件')
+    throw new Error('请先选择 EPUB 或 TXT 文件')
   }
   if (!validateBookFile(selectedBookFile.value)) {
-    throw new Error(`EPUB 文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB`)
+    throw new Error(`书籍文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB`)
   }
   const formData = new FormData()
   formData.append('original_filename', selectedBookFile.value.name)
   formData.append(
     'file',
     selectedBookFile.value,
-    buildSafeUploadFilename(selectedBookFile.value.name, 'book', '.epub')
+    buildSafeUploadFilename(selectedBookFile.value.name, 'book')
   )
-  return request<{ book_id: number; original_filename: string; title?: string; language?: string; is_duplicate: boolean }>(
+  return request<{ book_id: number; file_type: string; original_filename: string; title?: string; language?: string; is_duplicate: boolean }>(
     '/books/upload',
     {
       method: 'POST',
@@ -314,7 +316,7 @@ const syncVocabulary = async () => {
 
 const startAnalysis = async () => {
   if (!selectedBookFile.value) {
-    ElMessage.warning('请先选择 EPUB 文件')
+    ElMessage.warning('请先选择 EPUB 或 TXT 文件')
     return
   }
 

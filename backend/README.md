@@ -2,6 +2,8 @@
 
 FastAPI backend skeleton for the book vocabulary analysis product.
 
+当前书籍上传支持 `EPUB` 与“纯英文正文文本” `TXT` 两种格式。`TXT` 仅适用于纯正文场景，不保证带标记、表格或复杂元数据的文本文件效果。
+
 ## Quick Start
 
 ```bash

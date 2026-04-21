@@ -54,11 +54,12 @@ class AnalysisPipeline:
     def run(
         self,
         book_path: Path,
+        file_type: str,
         known_words_mode: KnownWordsMode,
         known_words_value: str,
         user_known_words: set[str] | None = None,
     ) -> PipelineResult:
-        raw_text = self.extract_book_text(book_path)
+        raw_text = self.extract_book_text(book_path=book_path, file_type=file_type)
 
         lemma_dict = load_lemma_dict()
         coca_rank_dict = load_coca_rank_dict()
@@ -156,7 +157,15 @@ class AnalysisPipeline:
             )
         return allowed_tags
 
-    def extract_book_text(self, book_path: Path) -> str:
+    def extract_book_text(self, book_path: Path, file_type: str) -> str:
+        if file_type == "txt":
+            return self.extract_txt_text(book_path)
+        if file_type != "epub":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"unsupported book file type: {file_type}",
+            )
+
         from ebooklib import epub
 
         all_text: list[str] = []
@@ -188,6 +197,25 @@ class AnalysisPipeline:
             )
 
         return "\n".join(all_text)
+
+    def extract_txt_text(self, book_path: Path) -> str:
+        try:
+            content = book_path.read_bytes()
+        except OSError as exc:
+            logger.exception("txt_extract_failed book_path=%s", book_path)
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="unable to extract readable text from txt",
+            ) from exc
+
+        text = self.decode_item_content(content)
+        if text.strip():
+            return text
+
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="unable to extract readable text from txt",
+        )
 
     def extract_book_text_from_zip(self, book_path: Path) -> list[str]:
         try:
@@ -435,6 +463,7 @@ class AnalysisPipeline:
         result_id: int,
         job_id: int,
         book_id: int,
+        file_type: str,
         title: str | None,
         original_filename: str,
         known_words_mode: KnownWordsMode,
@@ -454,6 +483,7 @@ class AnalysisPipeline:
             job_id=job_id,
             book=BookSummary(
                 book_id=book_id,
+                file_type=file_type,
                 title=title,
                 original_filename=original_filename,
             ),

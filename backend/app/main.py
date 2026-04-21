@@ -25,7 +25,7 @@ app = FastAPI(
     title=settings.app_name,
     version=settings.app_version,
     description=(
-        "API for EPUB vocabulary analysis.\n\n"
+        "API for EPUB/TXT vocabulary analysis.\n\n"
         "Auth flow for Swagger:\n"
         "1. Call `POST /api/v1/auth/register` once to create an account.\n"
         "2. Call `POST /api/v1/auth/login` to get `access_token`.\n"
@@ -42,7 +42,7 @@ app = FastAPI(
     },
     openapi_tags=[
         {"name": "auth", "description": "Register and login endpoints."},
-        {"name": "books", "description": "Upload EPUB files and view analysis history."},
+        {"name": "books", "description": "Upload EPUB/TXT files and view analysis history."},
         {"name": "analysis", "description": "Create analysis jobs, query results, and download CSV files."},
         {"name": "vocabularies", "description": "Manage user-known vocabulary imports and vocabulary items."},
         {"name": "vocab-test", "description": "Estimate the user's COCA vocabulary band with a staged test."},

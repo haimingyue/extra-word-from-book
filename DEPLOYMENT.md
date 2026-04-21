@@ -142,6 +142,15 @@ docker compose build frontend
 docker compose up -d backend frontend nginx
 ```
 
+```bash
+cd /srv/extra-word-from-book/app
+git pull
+docker compose stop backend nginx
+docker compose build backend
+docker compose up -d backend nginx
+```
+
+
 如果只需要重启服务而不重建镜像：
 
 ```bash

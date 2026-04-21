@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "extra-book-word-backend"
 version = "0.1.0"
-description = "FastAPI backend for EPUB vocabulary analysis"
+description = "FastAPI backend for EPUB/TXT vocabulary analysis"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
 dependencies = [

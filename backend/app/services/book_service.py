@@ -29,6 +29,8 @@ class BookUploadResult:
 class BookService:
     """Handle book upload, validation, storage, and deduplication."""
 
+    allowed_file_types = {"epub", "txt"}
+
     def __init__(self) -> None:
         self.settings = get_settings()
 
@@ -40,22 +42,21 @@ class BookService:
         original_filename: str | None = None,
     ) -> BookUploadResult:
         filename = (original_filename or "unknown.epub").strip() or "unknown.epub"
-        self._validate_extension(filename)
+        file_type = self._validate_extension(filename)
         storage_root = self.settings.books_storage_dir
         storage_root.mkdir(parents=True, exist_ok=True)
         temp_path = storage_root / f"upload-{uuid.uuid4().hex}.tmp"
 
         try:
             file_hash, file_size_bytes = await self._save_upload_to_temp(file=file, temp_path=temp_path)
-
-            self._validate_epub_file(temp_path)
+            self._validate_uploaded_file(temp_path=temp_path, file_type=file_type)
 
             existing_book = db.scalar(select(Book).where(Book.file_hash == file_hash))
             if existing_book is not None:
                 temp_path.unlink(missing_ok=True)
                 return BookUploadResult(book=existing_book, is_duplicate=True)
 
-            storage_path = self._build_storage_path(file_hash)
+            storage_path = self._build_storage_path(file_hash=file_hash, file_type=file_type)
             storage_path.parent.mkdir(parents=True, exist_ok=True)
             temp_path.replace(storage_path)
         except Exception:
@@ -65,6 +66,7 @@ class BookService:
 
         book = Book(
             file_hash=file_hash,
+            file_type=file_type,
             original_filename=filename,
             title=Path(filename).stem,
             language="en",
@@ -94,6 +96,7 @@ class BookService:
                 result_id=result.id,
                 job_id=job.id,
                 book_id=book.id,
+                file_type=book.file_type,
                 title=book.title,
                 original_filename=book.original_filename,
                 status=job.status,
@@ -144,12 +147,17 @@ class BookService:
 
         return True
 
-    def _validate_extension(self, filename: str) -> None:
-        if Path(filename).suffix.lower() != ".epub":
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail="only .epub files are supported",
-            )
+    def _validate_extension(self, filename: str) -> str:
+        suffix = Path(filename).suffix.lower()
+        if suffix == ".epub":
+            return "epub"
+        if suffix == ".txt":
+            return "txt"
+        allowed_types = ", ".join(f".{item}" for item in sorted(self.allowed_file_types))
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"only {allowed_types} files are supported",
+        )
 
     async def _save_upload_to_temp(self, file: UploadFile, temp_path: Path) -> tuple[str, int]:
         hasher = hashlib.sha256()
@@ -166,7 +174,7 @@ class BookService:
                     temp_path.unlink(missing_ok=True)
                     raise HTTPException(
                         status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail=f"epub file too large, max {self.settings.book_upload_max_size_mb}MB",
+                        detail=f"book file too large, max {self.settings.book_upload_max_size_mb}MB",
                     )
                 hasher.update(chunk)
                 target.write(chunk)
@@ -176,6 +184,17 @@ class BookService:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="empty file")
 
         return hasher.hexdigest(), total_size
+
+    def _validate_uploaded_file(self, temp_path: Path, file_type: str) -> None:
+        if file_type == "epub":
+            self._validate_epub_file(temp_path)
+            return
+        if file_type == "txt":
+            return
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=f"unsupported file type: {file_type}",
+        )
 
     def _validate_epub_file(self, file_path: Path) -> None:
         try:
@@ -212,8 +231,8 @@ class BookService:
             detail="invalid epub mimetype",
         )
 
-    def _build_storage_path(self, file_hash: str) -> Path:
-        return self.settings.books_storage_dir / f"{file_hash}.epub"
+    def _build_storage_path(self, file_hash: str, file_type: str) -> Path:
+        return self.settings.books_storage_dir / f"{file_hash}.{file_type}"
 
     def _delete_result_files(self, result: AnalysisResult) -> None:
         paths = [

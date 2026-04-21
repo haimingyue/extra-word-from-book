@@ -11,6 +11,7 @@ class Book(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     file_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True)
+    file_type: Mapped[str] = mapped_column(String(20), default="epub")
     original_filename: Mapped[str] = mapped_column(String(255))
     title: Mapped[str | None] = mapped_column(String(255), nullable=True)
     language: Mapped[str | None] = mapped_column(String(20), nullable=True)
