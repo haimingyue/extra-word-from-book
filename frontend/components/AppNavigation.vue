@@ -49,7 +49,8 @@ const { isAuthenticated, displayName, openAuth, clearAuth } = useAuth()
 const navItems = [
   { to: '/', label: '首页' },
   { to: '/history', label: '书架' },
-  { to: '/vocabulary', label: '词库' }
+  { to: '/vocabulary', label: '词库' },
+  { to: '/vocab-test', label: '词汇量测试' }
 ]
 
 const handleLogout = async () => {

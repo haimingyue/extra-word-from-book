@@ -24,16 +24,15 @@ const examLevelOptions: KnownWordsOption[] = [
   { key: 'exam_level:TOEFL', mode: 'exam_level', value: 'TOEFL', label: '托福' }
 ]
 
-const cocaRankOptions: KnownWordsOption[] = [
-  { key: 'coca_rank:1000', mode: 'coca_rank', value: '1000', label: 'COCA 1000' },
-  { key: 'coca_rank:2000', mode: 'coca_rank', value: '2000', label: 'COCA 2000' },
-  { key: 'coca_rank:3000', mode: 'coca_rank', value: '3000', label: 'COCA 3000' },
-  { key: 'coca_rank:5000', mode: 'coca_rank', value: '5000', label: 'COCA 5000' },
-  { key: 'coca_rank:8000', mode: 'coca_rank', value: '8000', label: 'COCA 8000' },
-  { key: 'coca_rank:10000', mode: 'coca_rank', value: '10000', label: 'COCA 10000' },
-  { key: 'coca_rank:12000', mode: 'coca_rank', value: '12000', label: 'COCA 12000' },
-  { key: 'coca_rank:15000', mode: 'coca_rank', value: '15000', label: 'COCA 15000' }
-]
+const cocaRankOptions: KnownWordsOption[] = Array.from({ length: 15 }, (_, index) => {
+  const value = String((index + 1) * 1000)
+  return {
+    key: `coca_rank:${value}`,
+    mode: 'coca_rank' as const,
+    value,
+    label: `COCA ${value}`
+  }
+})
 
 const knownWordsOptionGroups: KnownWordsOptionGroup[] = [
   { label: '考试标签', options: examLevelOptions },

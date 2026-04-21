@@ -45,6 +45,7 @@ app = FastAPI(
         {"name": "books", "description": "Upload EPUB files and view analysis history."},
         {"name": "analysis", "description": "Create analysis jobs, query results, and download CSV files."},
         {"name": "vocabularies", "description": "Manage user-known vocabulary imports and vocabulary items."},
+        {"name": "vocab-test", "description": "Estimate the user's COCA vocabulary band with a staged test."},
         {"name": "health", "description": "Service health check."},
     ],
 )
