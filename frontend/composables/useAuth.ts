@@ -21,14 +21,19 @@ export const useAuth = () => {
   const authVisible = useState<boolean>('auth-visible', () => false)
   const authMode = useState<AuthMode>('auth-mode', () => 'login')
   const pendingAction = useState<null | (() => Promise<void>)>('pending-auth-action', () => null)
+  const initialized = useState<boolean>('auth-initialized', () => false)
 
   const initAuth = () => {
     if (!process.client) {
       return
     }
+    if (initialized.value) {
+      return
+    }
     token.value = localStorage.getItem('auth-token') || ''
     const rawUser = localStorage.getItem('auth-user')
     currentUser.value = rawUser ? JSON.parse(rawUser) as AuthUser : null
+    initialized.value = true
   }
 
   const persistAuth = (nextToken: string, user: AuthUser) => {
@@ -76,6 +81,12 @@ export const useAuth = () => {
 
   const config = useRuntimeConfig()
 
+  const ensureAuthLoaded = () => {
+    if (process.client && !initialized.value) {
+      initAuth()
+    }
+  }
+
   const login = async (payload: LoginPayload) => {
     const response = await $fetch<{ code: string, message: string, data: { access_token: string, token_type: string, user: AuthUser } }>(
       `${config.public.apiBase}/auth/login`,
@@ -109,7 +120,9 @@ export const useAuth = () => {
     displayName,
     authVisible,
     authMode,
+    initialized,
     initAuth,
+    ensureAuthLoaded,
     openAuth,
     closeAuth,
     clearAuth,

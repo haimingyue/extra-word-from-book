@@ -6,7 +6,7 @@ type ApiEnvelope<T> = {
 
 export const useApi = () => {
   const config = useRuntimeConfig()
-  const { token, clearAuth, openAuth } = useAuth()
+  const { token, clearAuth, openAuth, ensureAuthLoaded } = useAuth()
 
   const formatValidationErrors = (detail: unknown) => {
     if (!Array.isArray(detail)) {
@@ -46,6 +46,9 @@ export const useApi = () => {
   }
 
   const buildUrl = (path: string) => {
+    if (!path) {
+      throw new Error('下载地址不存在')
+    }
     if (path.startsWith('http://') || path.startsWith('https://')) {
       return path
     }
@@ -57,6 +60,7 @@ export const useApi = () => {
   }
 
   const request = async <T>(path: string, options: Parameters<typeof $fetch<ApiEnvelope<T>>>[1] = {}) => {
+    ensureAuthLoaded()
     try {
       const response = await $fetch<ApiEnvelope<T>>(buildUrl(path), {
         ...options,
@@ -69,24 +73,20 @@ export const useApi = () => {
     } catch (error: any) {
       const payload = error?.data ?? error?.response?._data
       const message = extractErrorMessage(payload)
-      if (message) {
-        error.message = message
-        error.data = {
-          ...(payload && typeof payload === 'object' ? payload : {}),
-          message
-        }
-      }
-
       const statusCode = error?.response?.status
       if (statusCode === 401) {
         clearAuth()
         openAuth('login')
       }
-      throw error
+      const wrappedError = new Error(message || error?.message || '请求失败')
+      ;(wrappedError as Error & { data?: any; statusCode?: number }).data = payload
+      ;(wrappedError as Error & { data?: any; statusCode?: number }).statusCode = statusCode
+      throw wrappedError
     }
   }
 
   const downloadFile = async (path: string, filename: string) => {
+    ensureAuthLoaded()
     const response = await fetch(buildUrl(path), {
       headers: token.value ? { Authorization: `Bearer ${token.value}` } : {}
     })

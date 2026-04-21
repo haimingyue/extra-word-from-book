@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.api.deps import get_current_user_id
 from app.db.session import get_db
 from app.schemas.analysis import (
+    AnalysisDistributionResponse,
     AnalysisJobCreateRequest,
     AnalysisJobResponse,
     AnalysisResultResponse,
@@ -71,6 +72,22 @@ def get_result(
 ) -> ApiResponse[AnalysisResultResponse]:
     result = analysis_service.get_result(db=db, user_id=user_id, result_id=result_id)
     return ApiResponse(data=result)
+
+
+@router.get(
+    "/results/{result_id}/distribution",
+    response_model=ApiResponse[AnalysisDistributionResponse],
+    summary="Get Result Distribution",
+    description="Get bucketed COCA distribution data for a finished analysis result.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_result_distribution(
+    result_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[AnalysisDistributionResponse]:
+    distribution = analysis_service.get_distribution(db=db, user_id=user_id, result_id=result_id)
+    return ApiResponse(data=distribution)
 
 
 @router.get(

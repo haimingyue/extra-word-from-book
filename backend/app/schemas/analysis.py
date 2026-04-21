@@ -7,6 +7,7 @@ class DownloadType(str, Enum):
     all_words = "all_words"
     to_memorize = "to_memorize"
     coverage_95 = "coverage_95"
+    coverage_95_anki = "coverage_95_anki"
 
 
 class KnownWordsMode(str, Enum):
@@ -63,8 +64,10 @@ class AnalysisJobCreateRequest(BaseModel):
             self.known_words_level = level
             return self
 
-        if self.known_words_value not in {"初中", "高中", "四级", "六级"}:
-            raise ValueError("known_words_value must be one of 初中、高中、四级、六级 for exam_level mode")
+        if self.known_words_value not in {"初中", "高中", "四级", "六级", "GRE", "TOEFL", "托福"}:
+            raise ValueError(
+                "known_words_value must be one of 初中、高中、四级、六级、GRE、TOEFL、托福 for exam_level mode"
+            )
         self.known_words_level = None
         return self
 
@@ -96,6 +99,20 @@ class AnalysisSummary(BaseModel):
     coverage_95_word_count: int
 
 
+class DistributionBucket(BaseModel):
+    key: str
+    label: str
+    token_count: int
+    token_ratio: float
+
+
+class AnalysisDistributionResponse(BaseModel):
+    buckets: list[DistributionBucket]
+    known_words_mode: KnownWordsMode
+    known_words_value: str
+    total_word_count: int
+
+
 class ReadingAdvice(BaseModel):
     level: str
     label: str
@@ -107,6 +124,7 @@ class ResultDownloads(BaseModel):
     all_words: str
     to_memorize: str
     coverage_95: str
+    coverage_95_anki: str
 
 
 class AnalysisResultResponse(BaseModel):

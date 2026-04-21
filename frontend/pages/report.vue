@@ -5,7 +5,7 @@
     <PageHero
       eyebrow="Result"
       title="阅读前词汇分析结果"
-      description="查看这本书的词汇负担、95% 覆盖核心词和阅读建议，并直接下载三份 CSV。"
+      description="查看这本书的词汇负担、95% 覆盖核心词和阅读建议，并直接下载四份 CSV。"
       :stats="reportStats"
     />
 
@@ -98,6 +98,8 @@
           <p>{{ result.reading_advice.message }}</p>
         </article>
       </section>
+
+      <WordDistributionChart :result-id="result.result_id" />
 
       <section class="download-grid">
         <article v-for="download in downloadCards" :key="download.key" class="surface-panel page-card download-card">
@@ -212,6 +214,13 @@ const downloadCards = computed(() => [
     title: '95% 覆盖核心词',
     description: '优先记忆这部分词，最快进入可阅读状态。',
     filename: 'coverage_95.csv'
+  },
+  {
+    key: 'coverage_95_anki',
+    label: 'Anki Import',
+    title: '95% 单词导入 Anki 版',
+    description: '仅保留单词、排行与 tag 三列，并自动去除 COCA 排行为空的单词。',
+    filename: 'coverage_95_anki.csv'
   }
 ])
 
@@ -323,13 +332,26 @@ const retryJobPolling = async () => {
   await loadResult()
 }
 
+const resolveDownloadPath = (key: string) => {
+  if (!result.value) {
+    return ''
+  }
+
+  const existingPath = result.value.downloads?.[key]
+  if (existingPath) {
+    return existingPath
+  }
+
+  return `/api/v1/analysis/results/${result.value.result_id}/downloads/${key}`
+}
+
 const handleDownload = async (key: string, filename: string) => {
   if (!result.value) {
     return
   }
   downloading.value = key
   try {
-    await downloadFile(result.value.downloads[key], filename)
+    await downloadFile(resolveDownloadPath(key), filename)
   } catch (error: any) {
     ElMessage.error(error?.message || '下载失败')
   } finally {
@@ -441,7 +463,7 @@ onBeforeUnmount(() => {
 
 .download-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 18px;
 }
 

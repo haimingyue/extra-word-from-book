@@ -13,7 +13,12 @@ class Settings(BaseSettings):
     storage_root: str = "storage"
     ecdict_path: str | None = None
     coca_words_path: str | None = None
-    cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
+    cors_origins: str = (
+        "http://localhost:3000,"
+        "http://127.0.0.1:3000,"
+        "http://localhost:3001,"
+        "http://127.0.0.1:3001"
+    )
     jwt_secret_key: str = token_urlsafe(32)
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7

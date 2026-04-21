@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import logging
 from datetime import UTC, datetime
 from pathlib import Path
@@ -13,10 +14,29 @@ from app.models.analysis import AnalysisJob, AnalysisResult, AnalysisResultItem
 from app.models.book import Book
 from app.models.user import UserVocabularyItem
 from app.pipeline.analysis_pipeline import AnalysisPipeline
-from app.schemas.analysis import AnalysisJobResponse, AnalysisResultResponse, KnownWordsMode
+from app.schemas.analysis import (
+    AnalysisDistributionResponse,
+    AnalysisJobResponse,
+    AnalysisResultResponse,
+    DistributionBucket,
+    KnownWordsMode,
+)
 
 
 logger = logging.getLogger(__name__)
+
+
+DISTRIBUTION_BUCKETS = [
+    {"key": "coca_1_1000", "label": "1-1000", "min_rank": 1, "max_rank": 1000},
+    {"key": "coca_1001_2000", "label": "1001-2000", "min_rank": 1001, "max_rank": 2000},
+    {"key": "coca_2001_3000", "label": "2001-3000", "min_rank": 2001, "max_rank": 3000},
+    {"key": "coca_3001_5000", "label": "3001-5000", "min_rank": 3001, "max_rank": 5000},
+    {"key": "coca_5001_8000", "label": "5001-8000", "min_rank": 5001, "max_rank": 8000},
+    {"key": "coca_8001_12000", "label": "8001-12000", "min_rank": 8001, "max_rank": 12000},
+    {"key": "coca_12001_15000", "label": "12001-15000", "min_rank": 12001, "max_rank": 15000},
+    {"key": "coca_15001_plus", "label": "15001+", "min_rank": 15001, "max_rank": None},
+    {"key": "unknown", "label": "未收录", "min_rank": None, "max_rank": None},
+]
 
 
 class AnalysisService:
@@ -80,9 +100,11 @@ class AnalysisService:
             all_words_path = result_dir / "all_words.csv"
             to_memorize_path = result_dir / "to_memorize.csv"
             coverage_95_path = result_dir / "coverage_95.csv"
+            coverage_95_anki_path = result_dir / "coverage_95_anki.csv"
             self.pipeline.write_csv(pipeline_result.all_words_rows, all_words_path)
             self.pipeline.write_csv(pipeline_result.to_memorize_rows, to_memorize_path)
             self.pipeline.write_csv(pipeline_result.coverage_95_rows, coverage_95_path)
+            self.pipeline.write_anki_csv(pipeline_result.coverage_95_rows, coverage_95_anki_path)
 
             result.all_words_file_key = str(all_words_path.as_posix())
             result.to_memorize_file_key = str(to_memorize_path.as_posix())
@@ -160,11 +182,110 @@ class AnalysisService:
             "all_words": result.all_words_file_key,
             "to_memorize": result.to_memorize_file_key,
             "coverage_95": result.coverage_95_file_key,
+            "coverage_95_anki": self._build_anki_download_path(result.coverage_95_file_key),
         }
         file_key = path_map[download_type]
         if not file_key:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
-        return Path(file_key)
+        download_path = Path(file_key)
+        if download_type == "coverage_95_anki" and not download_path.exists():
+            self._ensure_anki_export(download_path=download_path, coverage_95_file_key=result.coverage_95_file_key)
+        if not download_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
+        return download_path
+
+    def get_distribution(self, db: Session, user_id: int, result_id: int) -> AnalysisDistributionResponse:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        job = self._get_job(db, result.job_id)
+        bucket_totals = self._load_distribution_from_items(db=db, result_id=result.id)
+        if bucket_totals is None:
+            bucket_totals = self._load_distribution_from_csv(result.all_words_file_key)
+
+        total_word_count = result.total_word_count if result.total_word_count > 0 else sum(bucket_totals.values())
+        buckets = [
+            DistributionBucket(
+                key=bucket["key"],
+                label=bucket["label"],
+                token_count=bucket_totals[bucket["key"]],
+                token_ratio=(bucket_totals[bucket["key"]] / total_word_count) if total_word_count > 0 else 0,
+            )
+            for bucket in DISTRIBUTION_BUCKETS
+        ]
+        return AnalysisDistributionResponse(
+            buckets=buckets,
+            known_words_mode=self._coerce_known_words_mode(job),
+            known_words_value=self._coerce_known_words_value(job),
+            total_word_count=total_word_count,
+        )
+
+    def _build_anki_download_path(self, coverage_95_file_key: str | None) -> str | None:
+        if not coverage_95_file_key:
+            return None
+        return str(Path(coverage_95_file_key).with_name("coverage_95_anki.csv"))
+
+    def _init_distribution_totals(self) -> dict[str, int]:
+        return {bucket["key"]: 0 for bucket in DISTRIBUTION_BUCKETS}
+
+    def _load_distribution_from_items(self, db: Session, result_id: int) -> dict[str, int] | None:
+        rows = db.scalars(select(AnalysisResultItem).where(AnalysisResultItem.result_id == result_id)).all()
+        if not rows:
+            return None
+
+        bucket_totals = self._init_distribution_totals()
+        for row in rows:
+            bucket_totals[self._bucket_key_for_rank(row.coca_rank)] += row.book_frequency
+        return bucket_totals
+
+    def _load_distribution_from_csv(self, all_words_file_key: str | None) -> dict[str, int]:
+        if not all_words_file_key:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="distribution source not found")
+
+        all_words_path = Path(all_words_file_key)
+        if not all_words_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="distribution source not found")
+
+        bucket_totals = self._init_distribution_totals()
+        with all_words_path.open("r", newline="", encoding="utf-8-sig") as file:
+            reader = csv.DictReader(file)
+            for row in reader:
+                coca_rank_raw = row.get("COCA 排行")
+                frequency_raw = row.get("书籍出现频率")
+                coca_rank = int(coca_rank_raw) if coca_rank_raw not in ("", None) else None
+                frequency = int(frequency_raw) if frequency_raw not in ("", None) else 0
+                bucket_totals[self._bucket_key_for_rank(coca_rank)] += frequency
+        return bucket_totals
+
+    def _bucket_key_for_rank(self, coca_rank: int | None) -> str:
+        if coca_rank is None:
+            return "unknown"
+
+        for bucket in DISTRIBUTION_BUCKETS:
+            min_rank = bucket["min_rank"]
+            max_rank = bucket["max_rank"]
+            if min_rank is None:
+                continue
+            if max_rank is None and coca_rank >= min_rank:
+                return str(bucket["key"])
+            if min_rank <= coca_rank <= max_rank:
+                return str(bucket["key"])
+        return "unknown"
+
+    def _ensure_anki_export(self, download_path: Path, coverage_95_file_key: str | None) -> None:
+        if not coverage_95_file_key:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
+
+        coverage_95_path = Path(coverage_95_file_key)
+        if not coverage_95_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
+
+        with coverage_95_path.open("r", newline="", encoding="utf-8-sig") as file:
+            reader = csv.DictReader(file)
+            coverage_rows = list(reader)
+
+        self.pipeline.write_anki_csv(coverage_rows, download_path)
 
     def _persist_result_items(
         self,

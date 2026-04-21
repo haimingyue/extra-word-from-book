@@ -220,6 +220,7 @@ class BookService:
             result.all_words_file_key,
             result.to_memorize_file_key,
             result.coverage_95_file_key,
+            str(Path(result.coverage_95_file_key).with_name("coverage_95_anki.csv")) if result.coverage_95_file_key else None,
         ]
         deleted_parents: set[Path] = set()
 

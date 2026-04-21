@@ -144,12 +144,15 @@ class AnalysisPipeline:
             "高中": {"小学", "初中", "高中"},
             "四级": {"小学", "初中", "高中", "四级"},
             "六级": {"小学", "初中", "高中", "四级", "六级"},
+            "GRE": {"小学", "初中", "高中", "四级", "六级", "考研", "GRE"},
+            "TOEFL": {"小学", "初中", "高中", "四级", "六级", "TOEFL"},
+            "托福": {"小学", "初中", "高中", "四级", "六级", "TOEFL"},
         }
         allowed_tags = allowed_map.get(known_words_value)
         if allowed_tags is None:
             raise HTTPException(
                 status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="known_words_value must be one of 初中、高中、四级、六级 for exam_level mode",
+                detail="known_words_value must be one of 初中、高中、四级、六级、GRE、TOEFL、托福 for exam_level mode",
             )
         return allowed_tags
 
@@ -411,6 +414,22 @@ class AnalysisPipeline:
             writer.writeheader()
             writer.writerows(rows)
 
+    def write_anki_csv(self, rows: list[dict[str, object]], output_path: Path) -> None:
+        fieldnames = ["单词", "排行", "tag"]
+        anki_rows = [
+            {
+                "单词": row["单词"],
+                "排行": row["COCA 排行"],
+                "tag": "tag",
+            }
+            for row in rows
+            if row["COCA 排行"] not in ("", None)
+        ]
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with output_path.open("w", newline="", encoding="utf-8-sig") as file:
+            writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writerows(anki_rows)
+
     def build_result_response(
         self,
         result_id: int,
@@ -457,5 +476,6 @@ class AnalysisPipeline:
                 all_words=f"/api/v1/analysis/results/{result_id}/downloads/all_words",
                 to_memorize=f"/api/v1/analysis/results/{result_id}/downloads/to_memorize",
                 coverage_95=f"/api/v1/analysis/results/{result_id}/downloads/coverage_95",
+                coverage_95_anki=f"/api/v1/analysis/results/{result_id}/downloads/coverage_95_anki",
             ),
         )

@@ -19,7 +19,9 @@ const examLevelOptions: KnownWordsOption[] = [
   { key: 'exam_level:初中', mode: 'exam_level', value: '初中', label: '初中' },
   { key: 'exam_level:高中', mode: 'exam_level', value: '高中', label: '高中' },
   { key: 'exam_level:四级', mode: 'exam_level', value: '四级', label: '四级' },
-  { key: 'exam_level:六级', mode: 'exam_level', value: '六级', label: '六级' }
+  { key: 'exam_level:六级', mode: 'exam_level', value: '六级', label: '六级' },
+  { key: 'exam_level:GRE', mode: 'exam_level', value: 'GRE', label: 'GRE' },
+  { key: 'exam_level:TOEFL', mode: 'exam_level', value: 'TOEFL', label: '托福' }
 ]
 
 const cocaRankOptions: KnownWordsOption[] = [
