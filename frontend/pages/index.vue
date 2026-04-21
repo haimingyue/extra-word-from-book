@@ -169,6 +169,8 @@ const selectedVocabularyFile = ref<File | null>(null)
 const submitting = ref(false)
 const uploadingVocabulary = ref(false)
 const knownWordsOptionKey = ref(getKnownWordsOptionKey(defaultKnownWordsSelection.value))
+const MAX_BOOK_UPLOAD_SIZE_MB = 100
+const MAX_BOOK_UPLOAD_SIZE_BYTES = MAX_BOOK_UPLOAD_SIZE_MB * 1024 * 1024
 
 const selectedBookName = computed(() => selectedBookFile.value?.name || '')
 const selectedVocabularyName = computed(() => selectedVocabularyFile.value?.name || '')
@@ -198,9 +200,31 @@ const triggerVocabularySelect = () => {
   vocabularyInputRef.value?.click()
 }
 
+const resetInputValue = (event: Event) => {
+  (event.target as HTMLInputElement).value = ''
+}
+
+const validateBookFile = (file: File) => {
+  const filename = file.name.toLowerCase()
+  if (!filename.endsWith('.epub')) {
+    ElMessage.error('只能上传 EPUB 文件')
+    return false
+  }
+  if (file.size > MAX_BOOK_UPLOAD_SIZE_BYTES) {
+    ElMessage.error(`EPUB 文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB，请压缩后重试`)
+    return false
+  }
+  return true
+}
+
 const onBookSelected = (event: Event) => {
   const file = (event.target as HTMLInputElement).files?.[0]
   if (!file) {
+    return
+  }
+  if (!validateBookFile(file)) {
+    selectedBookFile.value = null
+    resetInputValue(event)
     return
   }
   selectedBookFile.value = file
@@ -231,6 +255,9 @@ const buildSafeUploadFilename = (filename: string, fallbackBase: string, extensi
 const uploadBook = async () => {
   if (!selectedBookFile.value) {
     throw new Error('请先选择 EPUB 文件')
+  }
+  if (!validateBookFile(selectedBookFile.value)) {
+    throw new Error(`EPUB 文件不能超过 ${MAX_BOOK_UPLOAD_SIZE_MB}MB`)
   }
   const formData = new FormData()
   formData.append('original_filename', selectedBookFile.value.name)

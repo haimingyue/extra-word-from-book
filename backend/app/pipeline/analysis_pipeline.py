@@ -4,6 +4,7 @@ import csv
 import logging
 import re
 from collections import Counter
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from html import unescape
 from pathlib import Path
@@ -58,7 +59,6 @@ class AnalysisPipeline:
         user_known_words: set[str] | None = None,
     ) -> PipelineResult:
         raw_text = self.extract_book_text(book_path)
-        raw_tokens = self.extract_words(raw_text)
 
         lemma_dict = load_lemma_dict()
         coca_rank_dict = load_coca_rank_dict()
@@ -66,15 +66,13 @@ class AnalysisPipeline:
         dictionary_words = load_dictionary_words()
         valid_words = self.build_valid_word_set(dictionary_words, coca_rank_dict, lemma_dict)
 
-        words = self.clean_and_filter_tokens(
-            raw_tokens,
+        word_freq, total_word_count = self.count_cleaned_tokens(
+            self.extract_words(raw_text),
             dictionary_words=dictionary_words,
             coca_rank_dict=coca_rank_dict,
             lemma_dict=lemma_dict,
             valid_words=valid_words,
         )
-        word_freq = Counter(words)
-        total_word_count = len(words)
         ranked_words = word_freq.most_common()
         user_known_words = user_known_words or set()
 
@@ -236,18 +234,21 @@ class AnalysisPipeline:
         text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
         return re.sub(r"<[^>]+>", " ", text)
 
-    def extract_words(self, text: str) -> list[str]:
-        return RAW_TOKEN_PATTERN.findall(text)
+    def extract_words(self, text: str) -> Iterator[str]:
+        for match in RAW_TOKEN_PATTERN.finditer(text):
+            yield match.group(0)
 
-    def clean_and_filter_tokens(
+    def count_cleaned_tokens(
         self,
-        tokens: list[str],
+        tokens: Iterable[str],
         dictionary_words: set[str],
         coca_rank_dict: dict[str, int],
         lemma_dict: dict[str, str],
         valid_words: set[str],
-    ) -> list[str]:
-        cleaned: list[str] = []
+    ) -> tuple[Counter[str], int]:
+        word_freq: Counter[str] = Counter()
+        total_word_count = 0
+
         for token in tokens:
             for candidate in self.split_raw_token(token):
                 normalized = self.normalize_token(candidate)
@@ -263,8 +264,10 @@ class AnalysisPipeline:
                 ):
                     continue
 
-                cleaned.append(normalized)
-        return cleaned
+                word_freq[normalized] += 1
+                total_word_count += 1
+
+        return word_freq, total_word_count
 
     def split_raw_token(self, token: str) -> list[str]:
         normalized = token.replace("’", "'").replace("–", "-")

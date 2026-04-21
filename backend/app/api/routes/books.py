@@ -17,7 +17,7 @@ book_service = BookService()
     response_model=ApiResponse[BookUploadResponse],
     summary="Upload EPUB",
     description="Upload an EPUB file, validate it, and deduplicate it by file hash.",
-    responses={401: {"model": ErrorResponse}, 415: {"model": ErrorResponse}},
+    responses={401: {"model": ErrorResponse}, 413: {"model": ErrorResponse}, 415: {"model": ErrorResponse}},
 )
 async def upload_book(
     file: UploadFile = File(...),

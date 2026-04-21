@@ -154,6 +154,7 @@ class BookService:
     async def _save_upload_to_temp(self, file: UploadFile, temp_path: Path) -> tuple[str, int]:
         hasher = hashlib.sha256()
         total_size = 0
+        max_size_bytes = self.settings.book_upload_max_size_bytes
 
         with temp_path.open("wb") as target:
             while True:
@@ -161,6 +162,12 @@ class BookService:
                 if not chunk:
                     break
                 total_size += len(chunk)
+                if total_size > max_size_bytes:
+                    temp_path.unlink(missing_ok=True)
+                    raise HTTPException(
+                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                        detail=f"epub file too large, max {self.settings.book_upload_max_size_mb}MB",
+                    )
                 hasher.update(chunk)
                 target.write(chunk)
 

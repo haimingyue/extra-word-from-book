@@ -70,6 +70,7 @@ APP_ECDICT_PATH=/data/dicts/ecdict.csv
 APP_COCA_WORDS_PATH=/data/dicts/词根词缀记单词.csv
 APP_CORS_ORIGINS=http://你的域名,http://服务器公网IP
 APP_JWT_SECRET_KEY=替换成长随机字符串
+APP_BOOK_UPLOAD_MAX_SIZE_MB=100
 ```
 
 编辑 `/srv/extra-word-from-book/env/frontend.env`：
@@ -111,6 +112,14 @@ docker compose logs --tail=50 nginx
 ```bash
 docker compose up -d frontend nginx
 docker compose ps
+```
+
+上传 `EPUB` 前，还要确认所有入口层的请求体限制一致，至少不要小于 `APP_BOOK_UPLOAD_MAX_SIZE_MB`。当前仓库内应用 `nginx` 默认是 `100m`，如果你的公网入口前面还有额外的 `gateway-nginx`、云负载均衡或 CDN，也必须同步放开；否则公网请求会直接返回 `413`，请求到不了应用。
+
+项目内 `nginx` 配置位于 [deploy/nginx.conf](/Users/simoonqian/Desktop/extra-word-from-book/deploy/nginx.conf:1)，当前默认：
+
+```nginx
+client_max_body_size 100m;
 ```
 
 ## 5. 更新代码

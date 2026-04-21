@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     jwt_access_token_expire_minutes: int = 60 * 24 * 7
     enable_analysis_result_items: bool = True
+    book_upload_max_size_mb: int = 100
 
     model_config = SettingsConfigDict(env_file=".env", env_prefix="APP_", extra="ignore")
 
@@ -52,6 +53,10 @@ class Settings(BaseSettings):
     @property
     def cors_allowed_origins(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def book_upload_max_size_bytes(self) -> int:
+        return max(self.book_upload_max_size_mb, 1) * 1024 * 1024
 
 
 @lru_cache
