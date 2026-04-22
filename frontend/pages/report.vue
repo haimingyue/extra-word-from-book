@@ -118,6 +118,49 @@
           </el-button>
         </article>
       </section>
+
+      <section v-if="result.chapter_analysis_supported" class="chapter-section">
+        <div class="section-heading">
+          <span class="eyebrow">Chapters</span>
+          <h2>按章节查看词汇负担</h2>
+          <p>章节分析目前仅支持 EPUB。点击任意章节，打开详情弹框查看指标、分布曲线和本章导出。</p>
+        </div>
+
+        <article class="surface-panel page-card chapter-list-panel">
+          <div class="chapter-list-header">
+            <strong>章节概览</strong>
+            <span>{{ chapters.length }} 章</span>
+          </div>
+
+          <div v-if="chaptersLoading" class="chapter-empty">
+            <el-skeleton animated :rows="5" />
+          </div>
+
+          <div v-else-if="!chapters.length" class="chapter-empty">
+            <p>当前 EPUB 没有提取到可展示的有效章节。</p>
+          </div>
+
+          <template v-else>
+            <button
+              v-for="chapter in chapters"
+              :key="chapter.chapter_id"
+              type="button"
+              class="chapter-item"
+              @click="openChapter(chapter.chapter_id)"
+            >
+              <div class="chapter-item-top">
+                <strong>{{ chapter.chapter_index }}. {{ chapter.chapter_title }}</strong>
+                <span>{{ formatNumber(chapter.coverage_95_word_count) }} 核心词</span>
+              </div>
+              <div class="chapter-item-meta">
+                <span>总词数 {{ formatNumber(chapter.total_word_count) }}</span>
+                <span>待记忆 {{ formatNumber(chapter.to_memorize_word_count) }}</span>
+                <span>{{ chapter.reading_advice.label }}</span>
+              </div>
+            </button>
+          </template>
+        </article>
+      </section>
     </template>
 
     <EmptyStateCard
@@ -132,6 +175,96 @@
         </NuxtLink>
       </template>
     </EmptyStateCard>
+
+    <el-dialog
+      v-model="chapterDialogVisible"
+      width="min(1120px, calc(100vw - 32px))"
+      class="chapter-dialog"
+      :show-close="true"
+      destroy-on-close
+    >
+      <template #header>
+        <div class="chapter-dialog-header">
+          <div>
+            <span v-if="activeChapter" class="surface-tag">Chapter {{ activeChapter.chapter.chapter_index }}</span>
+            <h2>{{ activeChapter?.chapter.chapter_title || '章节详情' }}</h2>
+            <p>{{ activeChapter?.chapter.reading_advice.message || '正在加载章节详情...' }}</p>
+          </div>
+          <div v-if="activeChapter" class="chapter-dialog-badge" :class="activeChapter.chapter.reading_advice.level">
+            <span>阅读建议</span>
+            <strong>{{ activeChapter.chapter.reading_advice.label }}</strong>
+          </div>
+        </div>
+      </template>
+
+      <div v-if="chapterDetailLoading" class="chapter-empty chapter-dialog-loading">
+        <el-skeleton animated :rows="10" />
+      </div>
+
+      <template v-else-if="activeChapter">
+        <section class="chapter-hero">
+          <div class="chapter-hero-copy">
+            <span class="eyebrow">Chapter Insight</span>
+            <h3>{{ activeChapter.chapter.chapter_title }}</h3>
+            <p>查看这一章的阅读负担、COCA 档位分布，以及专属词表下载入口。</p>
+          </div>
+          <div class="chapter-hero-orbit">
+            <div class="chapter-hero-ring">
+              <span>95%</span>
+              <strong>{{ formatNumber(activeChapter.chapter.coverage_95_word_count) }}</strong>
+              <small>核心待记忆词</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="chapter-metrics">
+          <article class="meta-card chapter-metric-card">
+            <span>总词数</span>
+            <strong>{{ formatNumber(activeChapter.chapter.total_word_count) }}</strong>
+          </article>
+          <article class="meta-card chapter-metric-card">
+            <span>唯一词</span>
+            <strong>{{ formatNumber(activeChapter.chapter.unique_word_count) }}</strong>
+          </article>
+          <article class="meta-card chapter-metric-card">
+            <span>待记忆词</span>
+            <strong>{{ formatNumber(activeChapter.chapter.to_memorize_word_count) }}</strong>
+          </article>
+          <article class="meta-card chapter-metric-card">
+            <span>核心词</span>
+            <strong>{{ formatNumber(activeChapter.chapter.coverage_95_word_count) }}</strong>
+          </article>
+        </section>
+
+        <WordDistributionChart
+          :distribution-path="`/analysis/results/${activeChapter.result_id}/chapters/${activeChapter.chapter.chapter_id}/distribution`"
+          title="本章词汇分布曲线"
+          description="横轴为 COCA 分档，纵轴为该档位单词在本章中的累计出现次数。"
+          note="灰色/未知档表示没有匹配到 COCA 排名的词，可据此判断本章生词集中在哪些频段。"
+        />
+
+        <section class="chapter-download-panel">
+          <div class="section-heading compact-copy">
+            <span class="eyebrow">Chapter CSV</span>
+            <h3>下载这一章的学习材料</h3>
+            <p>保留与整本书一致的 4 种导出格式，适合按章节推进阅读和记忆。</p>
+          </div>
+
+          <div class="chapter-downloads">
+            <el-button
+              v-for="download in downloadCards"
+              :key="`chapter-${download.key}`"
+              round
+              size="large"
+              :loading="downloading === `chapter:${download.key}`"
+              @click="handleChapterDownload(download.key, download.filename)"
+            >
+              下载本章 {{ download.filename }}
+            </el-button>
+          </div>
+        </section>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -177,6 +310,34 @@ type AnalysisResult = {
   known_words_value: string
   created_at: string
   downloads: Record<string, string>
+  chapter_analysis_supported: boolean
+}
+
+type ChapterSummary = {
+  chapter_id: number
+  chapter_index: number
+  chapter_title: string
+  total_word_count: number
+  unique_word_count: number
+  to_memorize_word_count: number
+  coverage_95_word_count: number
+  reading_advice: {
+    level: string
+    label: string
+    color: string
+    message: string
+  }
+}
+
+type ChapterListResponse = {
+  supported: boolean
+  items: ChapterSummary[]
+}
+
+type ChapterDetail = {
+  result_id: number
+  chapter: ChapterSummary
+  downloads: Record<string, string>
 }
 
 type JobState = 'loading' | 'processing' | 'completed' | 'failed' | 'empty'
@@ -190,6 +351,11 @@ const jobState = ref<JobState>('loading')
 const downloading = ref('')
 const result = ref<AnalysisResult | null>(null)
 const job = ref<AnalysisJob | null>(null)
+const chapters = ref<ChapterSummary[]>([])
+const chaptersLoading = ref(false)
+const activeChapter = ref<ChapterDetail | null>(null)
+const chapterDetailLoading = ref(false)
+const chapterDialogVisible = ref(false)
 const failureMessage = ref('分析失败，请稍后重试。')
 const pollCount = ref(0)
 const pollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -264,6 +430,7 @@ const scheduleNextPoll = () => {
 
 const loadResultById = async (resultId: string) => {
   result.value = await request<AnalysisResult>(`/analysis/results/${resultId}`)
+  await loadChapters()
   jobState.value = 'completed'
 }
 
@@ -273,6 +440,7 @@ const loadJobAndMaybeResult = async (jobId: string) => {
 
   if (response.status === 'completed' && response.result_id) {
     result.value = await request<AnalysisResult>(`/analysis/results/${response.result_id}`)
+    await loadChapters()
     jobState.value = 'completed'
     if (route.query.resultId !== String(response.result_id)) {
       await router.replace({
@@ -333,6 +501,42 @@ const retryJobPolling = async () => {
   await loadResult()
 }
 
+const loadChapters = async () => {
+  chapters.value = []
+  activeChapter.value = null
+
+  if (!result.value?.chapter_analysis_supported) {
+    return
+  }
+
+  chaptersLoading.value = true
+  try {
+    const response = await request<ChapterListResponse>(`/analysis/results/${result.value.result_id}/chapters`)
+    chapters.value = response.items
+  } catch (error: any) {
+    ElMessage.error(error?.message || '章节列表加载失败')
+  } finally {
+    chaptersLoading.value = false
+  }
+}
+
+const openChapter = async (chapterId: number) => {
+  if (!result.value) {
+    return
+  }
+  chapterDialogVisible.value = true
+  activeChapter.value = null
+  chapterDetailLoading.value = true
+  try {
+    activeChapter.value = await request<ChapterDetail>(`/analysis/results/${result.value.result_id}/chapters/${chapterId}`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '章节详情加载失败')
+    chapterDialogVisible.value = false
+  } finally {
+    chapterDetailLoading.value = false
+  }
+}
+
 const resolveDownloadPath = (key: string) => {
   if (!result.value) {
     return ''
@@ -360,11 +564,28 @@ const handleDownload = async (key: string, filename: string) => {
   }
 }
 
+const handleChapterDownload = async (key: string, filename: string) => {
+  if (!activeChapter.value) {
+    return
+  }
+  downloading.value = `chapter:${key}`
+  try {
+    const path = activeChapter.value.downloads?.[key]
+    await downloadFile(path, `chapter_${activeChapter.value.chapter.chapter_index}_${filename}`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '下载失败')
+  } finally {
+    downloading.value = ''
+  }
+}
+
 watch(
   () => route.fullPath,
   async () => {
     result.value = null
     job.value = null
+    chapters.value = []
+    activeChapter.value = null
     pollCount.value = 0
     await loadResult()
   },
@@ -468,6 +689,191 @@ onBeforeUnmount(() => {
   gap: 18px;
 }
 
+.chapter-section,
+.chapter-list-panel,
+.chapter-downloads,
+.chapter-download-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.chapter-list-header,
+.chapter-item-top,
+.chapter-item-meta,
+.chapter-metrics,
+.chapter-dialog-header,
+.chapter-hero {
+  display: grid;
+  gap: 12px;
+}
+
+.chapter-list-header,
+.chapter-item-top {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+}
+
+.chapter-item {
+  border: 1px solid var(--border-soft);
+  background: var(--surface-soft);
+  border-radius: 20px;
+  padding: 18px;
+  text-align: left;
+  color: inherit;
+  transition: transform 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.chapter-item:hover {
+  border-color: rgba(78, 123, 255, 0.38);
+  box-shadow: 0 16px 40px rgba(78, 123, 255, 0.1);
+  transform: translateY(-2px);
+}
+
+.chapter-item-meta,
+.chapter-metrics {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.chapter-metrics {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.chapter-empty {
+  min-height: 140px;
+  display: grid;
+  align-content: center;
+  color: var(--text-faint);
+}
+
+.chapter-dialog-header {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  padding-right: 24px;
+}
+
+.chapter-dialog-header h2 {
+  margin: 12px 0 8px;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.chapter-dialog-header p {
+  margin: 0;
+  color: var(--text-faint);
+}
+
+.chapter-dialog-badge {
+  min-width: 180px;
+  padding: 18px 20px;
+  border-radius: 24px;
+  background: linear-gradient(135deg, rgba(31, 185, 128, 0.16) 0%, rgba(78, 123, 255, 0.14) 100%);
+  border: 1px solid rgba(78, 123, 255, 0.18);
+  display: grid;
+  gap: 8px;
+}
+
+.chapter-dialog-badge.level_3 {
+  background: linear-gradient(135deg, rgba(239, 90, 45, 0.16) 0%, rgba(245, 166, 35, 0.14) 100%);
+  border-color: rgba(239, 90, 45, 0.22);
+}
+
+.chapter-dialog-badge span {
+  color: var(--text-faint);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.chapter-dialog-badge strong {
+  font-size: 24px;
+  line-height: 1.05;
+}
+
+.chapter-hero {
+  grid-template-columns: minmax(0, 1.1fr) 280px;
+  align-items: center;
+  padding: 28px;
+  border-radius: 28px;
+  background:
+    radial-gradient(circle at top left, rgba(78, 123, 255, 0.18), transparent 38%),
+    linear-gradient(135deg, rgba(255, 249, 245, 0.98) 0%, rgba(241, 245, 255, 0.96) 100%);
+  border: 1px solid rgba(78, 123, 255, 0.14);
+}
+
+.chapter-hero-copy h3 {
+  margin: 8px 0 10px;
+  font-size: 42px;
+  line-height: 0.96;
+}
+
+.chapter-hero-copy p {
+  margin: 0;
+  max-width: 540px;
+  color: var(--text-faint);
+}
+
+.chapter-hero-orbit {
+  display: grid;
+  place-items: center;
+}
+
+.chapter-hero-ring {
+  width: 208px;
+  height: 208px;
+  border-radius: 50%;
+  border: 14px solid rgba(78, 123, 255, 0.12);
+  box-shadow:
+    inset 0 0 0 10px rgba(255, 255, 255, 0.84),
+    0 24px 60px rgba(78, 123, 255, 0.12);
+  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.94) 0%, rgba(241, 245, 255, 0.92) 100%);
+  display: grid;
+  place-items: center;
+  text-align: center;
+}
+
+.chapter-hero-ring span,
+.chapter-hero-ring small {
+  display: block;
+  color: var(--text-faint);
+}
+
+.chapter-hero-ring strong {
+  font-size: 44px;
+  line-height: 0.94;
+}
+
+.chapter-metric-card {
+  background: linear-gradient(180deg, rgba(241, 245, 255, 0.78) 0%, rgba(255, 255, 255, 0.92) 100%);
+}
+
+.chapter-download-panel {
+  padding: 24px;
+  border-radius: 26px;
+  background: linear-gradient(180deg, rgba(241, 245, 255, 0.7) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border: 1px solid rgba(78, 123, 255, 0.12);
+}
+
+.chapter-dialog-loading {
+  min-height: 480px;
+}
+
+:deep(.chapter-dialog .el-dialog) {
+  border-radius: 32px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(248, 250, 255, 0.98) 100%);
+  overflow: hidden;
+}
+
+:deep(.chapter-dialog .el-dialog__header) {
+  padding: 28px 28px 0;
+}
+
+:deep(.chapter-dialog .el-dialog__body) {
+  padding: 20px 28px 28px;
+  display: grid;
+  gap: 22px;
+}
+
 .download-card h3 {
   margin: 0;
   font-size: 28px;
@@ -478,8 +884,21 @@ onBeforeUnmount(() => {
   .processing-grid,
   .report-band,
   .download-grid,
-  .band-meta {
+  .band-meta,
+  .chapter-item-meta,
+  .chapter-metrics,
+  .chapter-dialog-header,
+  .chapter-hero {
     grid-template-columns: 1fr;
+  }
+
+  .chapter-hero-ring {
+    width: 168px;
+    height: 168px;
+  }
+
+  .chapter-hero-copy h3 {
+    font-size: 34px;
   }
 }
 </style>

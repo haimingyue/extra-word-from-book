@@ -9,6 +9,8 @@ from app.schemas.analysis import (
     AnalysisJobCreateRequest,
     AnalysisJobResponse,
     AnalysisResultResponse,
+    ChapterDetailResponse,
+    ChapterListResponse,
     DownloadType,
 )
 from app.schemas.common import ApiResponse, ErrorResponse
@@ -75,6 +77,39 @@ def get_result(
 
 
 @router.get(
+    "/results/{result_id}/chapters",
+    response_model=ApiResponse[ChapterListResponse],
+    summary="List Result Chapters",
+    description="List chapter summaries for a finished EPUB analysis.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def list_result_chapters(
+    result_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[ChapterListResponse]:
+    chapters = analysis_service.list_chapters(db=db, user_id=user_id, result_id=result_id)
+    return ApiResponse(data=chapters)
+
+
+@router.get(
+    "/results/{result_id}/chapters/{chapter_id}",
+    response_model=ApiResponse[ChapterDetailResponse],
+    summary="Get Result Chapter",
+    description="Get chapter summary and download links for one chapter in a finished EPUB analysis.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_result_chapter(
+    result_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[ChapterDetailResponse]:
+    chapter = analysis_service.get_chapter_detail(db=db, user_id=user_id, result_id=result_id, chapter_id=chapter_id)
+    return ApiResponse(data=chapter)
+
+
+@router.get(
     "/results/{result_id}/distribution",
     response_model=ApiResponse[AnalysisDistributionResponse],
     summary="Get Result Distribution",
@@ -87,6 +122,28 @@ def get_result_distribution(
     user_id: int = Depends(get_current_user_id),
 ) -> ApiResponse[AnalysisDistributionResponse]:
     distribution = analysis_service.get_distribution(db=db, user_id=user_id, result_id=result_id)
+    return ApiResponse(data=distribution)
+
+
+@router.get(
+    "/results/{result_id}/chapters/{chapter_id}/distribution",
+    response_model=ApiResponse[AnalysisDistributionResponse],
+    summary="Get Chapter Distribution",
+    description="Get bucketed COCA distribution data for one chapter in a finished EPUB analysis result.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def get_result_chapter_distribution(
+    result_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[AnalysisDistributionResponse]:
+    distribution = analysis_service.get_chapter_distribution(
+        db=db,
+        user_id=user_id,
+        result_id=result_id,
+        chapter_id=chapter_id,
+    )
     return ApiResponse(data=distribution)
 
 
@@ -109,3 +166,26 @@ def download_result(
         download_type=download_type.value,
     )
     return FileResponse(path=download_path, media_type="text/csv", filename=f"{download_type.value}.csv")
+
+
+@router.get(
+    "/results/{result_id}/chapters/{chapter_id}/downloads/{download_type}",
+    summary="Download Chapter CSV",
+    description="Download one of the generated CSV files for a chapter in an EPUB analysis result.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def download_result_chapter(
+    result_id: int,
+    chapter_id: int,
+    download_type: DownloadType,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> FileResponse:
+    download_path = analysis_service.get_chapter_download_path(
+        db=db,
+        user_id=user_id,
+        result_id=result_id,
+        chapter_id=chapter_id,
+        download_type=download_type.value,
+    )
+    return FileResponse(path=download_path, media_type="text/csv", filename=f"chapter_{chapter_id}_{download_type.value}.csv")

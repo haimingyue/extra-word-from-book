@@ -28,9 +28,48 @@ logger = logging.getLogger(__name__)
 
 ABBREVIATION_BLOCKLIST = {"isbn", "jr", "pp"}
 SHORT_WORD_BLOCKLIST = {"b", "c", "d", "er", "h", "j", "k", "m", "mr", "o", "p", "t"}
-SHORT_WORD_WHITELIST = {"a", "am", "an", "as", "at", "be", "by", "do", "go", "he", "i", "if", "in", "is", "it", "me", "my", "no", "of", "on", "or", "ox", "so", "to", "up", "us", "we"}
+SHORT_WORD_WHITELIST = {
+    "a",
+    "am",
+    "an",
+    "as",
+    "at",
+    "be",
+    "by",
+    "do",
+    "go",
+    "he",
+    "i",
+    "if",
+    "in",
+    "is",
+    "it",
+    "me",
+    "my",
+    "no",
+    "of",
+    "on",
+    "or",
+    "ox",
+    "so",
+    "to",
+    "up",
+    "us",
+    "we",
+}
 VALID_TOKEN_PATTERN = re.compile(r"[a-z]+(?:'[a-z]+)?")
 RAW_TOKEN_PATTERN = re.compile(r"[A-Za-z]+(?:['’-][A-Za-z]+|-[A-Za-z]+)*")
+CHAPTER_TITLE_TAG_PATTERN = re.compile(r"<(?:title|h1)[^>]*>(.*?)</(?:title|h1)>", flags=re.IGNORECASE | re.DOTALL)
+CHAPTER_CONTENT_MIN_WORDS = 80
+
+
+@dataclass(slots=True)
+class PipelineResources:
+    lemma_dict: dict[str, str]
+    coca_rank_dict: dict[str, int]
+    exam_level_dict: dict[str, set[str]]
+    dictionary_words: set[str]
+    valid_words: set[str]
 
 
 @dataclass(slots=True)
@@ -48,6 +87,13 @@ class PipelineResult:
     coverage_95_rows: list[dict[str, object]]
 
 
+@dataclass(slots=True)
+class ChapterText:
+    chapter_index: int
+    chapter_title: str
+    text: str
+
+
 class AnalysisPipeline:
     """Clean, normalize, filter, and rank book vocabulary for learning output."""
 
@@ -60,33 +106,47 @@ class AnalysisPipeline:
         user_known_words: set[str] | None = None,
     ) -> PipelineResult:
         raw_text = self.extract_book_text(book_path=book_path, file_type=file_type)
+        resources = self.load_resources()
+        return self.run_for_text(
+            raw_text=raw_text,
+            known_words_mode=known_words_mode,
+            known_words_value=known_words_value,
+            user_known_words=user_known_words,
+            resources=resources,
+        )
 
-        lemma_dict = load_lemma_dict()
-        coca_rank_dict = load_coca_rank_dict()
-        exam_level_dict = load_exam_level_dict()
-        dictionary_words = load_dictionary_words()
-        valid_words = self.build_valid_word_set(dictionary_words, coca_rank_dict, lemma_dict)
+    def run_for_text(
+        self,
+        raw_text: str,
+        known_words_mode: KnownWordsMode,
+        known_words_value: str,
+        user_known_words: set[str] | None = None,
+        resources: PipelineResources | None = None,
+    ) -> PipelineResult:
+        resources = resources or self.load_resources()
+        user_known_words = user_known_words or set()
 
         word_freq, total_word_count = self.count_cleaned_tokens(
             self.extract_words(raw_text),
-            dictionary_words=dictionary_words,
-            coca_rank_dict=coca_rank_dict,
-            lemma_dict=lemma_dict,
-            valid_words=valid_words,
+            dictionary_words=resources.dictionary_words,
+            coca_rank_dict=resources.coca_rank_dict,
+            lemma_dict=resources.lemma_dict,
+            valid_words=resources.valid_words,
         )
         ranked_words = word_freq.most_common()
-        user_known_words = user_known_words or set()
 
-        all_rows = []
+        all_rows: list[dict[str, object]] = []
         known_word_cutoff = self.parse_coca_threshold(known_words_mode, known_words_value)
         allowed_exam_tags = self.get_allowed_exam_tags(known_words_mode, known_words_value)
 
         for index, (word, frequency) in enumerate(ranked_words, start=1):
-            lemma = lemma_dict.get(word, "")
-            coca_rank = coca_rank_dict.get(word)
+            lemma = resources.lemma_dict.get(word, "")
+            coca_rank = resources.coca_rank_dict.get(word)
             if coca_rank is None and lemma:
-                coca_rank = coca_rank_dict.get(lemma)
-            exam_tags = exam_level_dict.get(word) or (exam_level_dict.get(lemma) if lemma else None)
+                coca_rank = resources.coca_rank_dict.get(lemma)
+            exam_tags = resources.exam_level_dict.get(word) or (
+                resources.exam_level_dict.get(lemma) if lemma else None
+            )
             is_known = (
                 (known_word_cutoff is not None and coca_rank is not None and coca_rank <= known_word_cutoff)
                 or bool(allowed_exam_tags and exam_tags and allowed_exam_tags.intersection(exam_tags))
@@ -123,6 +183,84 @@ class AnalysisPipeline:
             to_memorize_rows=self.resequence_rows(to_memorize_rows),
             coverage_95_rows=self.resequence_rows(coverage_95_rows),
         )
+
+    def load_resources(self) -> PipelineResources:
+        lemma_dict = load_lemma_dict()
+        coca_rank_dict = load_coca_rank_dict()
+        exam_level_dict = load_exam_level_dict()
+        dictionary_words = load_dictionary_words()
+        valid_words = self.build_valid_word_set(dictionary_words, coca_rank_dict, lemma_dict)
+        return PipelineResources(
+            lemma_dict=lemma_dict,
+            coca_rank_dict=coca_rank_dict,
+            exam_level_dict=exam_level_dict,
+            dictionary_words=dictionary_words,
+            valid_words=valid_words,
+        )
+
+    def extract_chapters(self, book_path: Path, file_type: str) -> list[ChapterText]:
+        if file_type != "epub":
+            return []
+
+        chapters = self.extract_epub_chapters(book_path)
+        if chapters:
+            return chapters
+
+        logger.info("epub_chapter_extract_empty book_path=%s", book_path)
+        return []
+
+    def extract_epub_chapters(self, book_path: Path) -> list[ChapterText]:
+        try:
+            from ebooklib import ITEM_DOCUMENT, epub
+
+            book = epub.read_epub(str(book_path))
+            item_by_id = {
+                getattr(item, "get_id", lambda: "")(): item
+                for item in book.get_items()
+                if getattr(item, "media_type", "") in {"application/xhtml+xml", "text/html", "application/xml", "text/plain"}
+            }
+            chapters: list[ChapterText] = []
+
+            for spine_item in book.spine:
+                item_id = spine_item[0] if isinstance(spine_item, tuple) else spine_item
+                item = item_by_id.get(item_id)
+                if item is None or item.get_type() != ITEM_DOCUMENT:
+                    continue
+
+                content = self.decode_item_content(item.get_content())
+                if not content:
+                    continue
+
+                text = self.normalize_text_content(self.remove_html_tags(content))
+                if not self.is_valid_chapter_text(text):
+                    continue
+
+                chapters.append(
+                    ChapterText(
+                        chapter_index=len(chapters) + 1,
+                        chapter_title=self.resolve_chapter_title(content, fallback_index=len(chapters) + 1),
+                        text=text,
+                    )
+                )
+
+            return chapters
+        except Exception:
+            logger.exception("epub_chapter_extract_failed book_path=%s", book_path)
+            return []
+
+    def resolve_chapter_title(self, html_content: str, fallback_index: int) -> str:
+        match = CHAPTER_TITLE_TAG_PATTERN.search(html_content)
+        if match:
+            title = self.normalize_text_content(self.remove_html_tags(match.group(1)))
+            if title:
+                return title[:255]
+        return f"Chapter {fallback_index}"
+
+    def is_valid_chapter_text(self, text: str) -> bool:
+        if not text.strip():
+            return False
+        token_count = sum(1 for _ in self.extract_words(text))
+        return token_count >= CHAPTER_CONTENT_MIN_WORDS
 
     def parse_coca_threshold(self, known_words_mode: KnownWordsMode, known_words_value: str) -> int | None:
         if known_words_mode != KnownWordsMode.coca_rank:
@@ -166,27 +304,11 @@ class AnalysisPipeline:
                 detail=f"unsupported book file type: {file_type}",
             )
 
-        from ebooklib import epub
-
         all_text: list[str] = []
-        try:
-            book = epub.read_epub(str(book_path))
-            for item in book.get_items():
-                if item.media_type not in ["application/xhtml+xml", "text/html", "application/xml", "text/plain"]:
-                    continue
-
-                content = self.decode_item_content(item.get_content())
-                if not content:
-                    continue
-
-                text = self.remove_html_tags(content)
-                if text.strip():
-                    all_text.append(text)
-        except Exception:
-            logger.exception("epub_extract_primary_failed book_path=%s", book_path)
-            all_text = []
-
-        if not all_text:
+        chapters = self.extract_epub_chapters(book_path)
+        if chapters:
+            all_text = [chapter.text for chapter in chapters]
+        else:
             all_text = self.extract_book_text_from_zip(book_path)
 
         if not all_text:
@@ -208,7 +330,7 @@ class AnalysisPipeline:
                 detail="unable to extract readable text from txt",
             ) from exc
 
-        text = self.decode_item_content(content)
+        text = self.normalize_text_content(self.decode_item_content(content))
         if text.strip():
             return text
 
@@ -220,17 +342,13 @@ class AnalysisPipeline:
     def extract_book_text_from_zip(self, book_path: Path) -> list[str]:
         try:
             with ZipFile(book_path) as archive:
-                candidate_names = [
-                    name
-                    for name in archive.namelist()
-                    if self.is_candidate_text_item(name)
-                ]
+                candidate_names = [name for name in archive.namelist() if self.is_candidate_text_item(name)]
                 texts: list[str] = []
                 for name in sorted(candidate_names):
                     content = self.decode_item_content(archive.read(name))
                     if not content:
                         continue
-                    text = self.remove_html_tags(content)
+                    text = self.normalize_text_content(self.remove_html_tags(content))
                     if text.strip():
                         texts.append(text)
                 return texts
@@ -264,6 +382,9 @@ class AnalysisPipeline:
         text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL | re.IGNORECASE)
         text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL | re.IGNORECASE)
         return re.sub(r"<[^>]+>", " ", text)
+
+    def normalize_text_content(self, text: str) -> str:
+        return re.sub(r"\s+", " ", text).strip()
 
     def extract_words(self, text: str) -> Iterator[str]:
         for match in RAW_TOKEN_PATTERN.finditer(text):
@@ -456,6 +577,7 @@ class AnalysisPipeline:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("w", newline="", encoding="utf-8-sig") as file:
             writer = csv.DictWriter(file, fieldnames=fieldnames)
+            writer.writeheader()
             writer.writerows(anki_rows)
 
     def build_result_response(
@@ -477,6 +599,7 @@ class AnalysisPipeline:
         reading_label: str,
         reading_color: str,
         reading_message: str,
+        chapter_analysis_supported: bool = False,
     ) -> AnalysisResultResponse:
         return AnalysisResultResponse(
             result_id=result_id,
@@ -508,4 +631,5 @@ class AnalysisPipeline:
                 coverage_95=f"/api/v1/analysis/results/{result_id}/downloads/coverage_95",
                 coverage_95_anki=f"/api/v1/analysis/results/{result_id}/downloads/coverage_95_anki",
             ),
+            chapter_analysis_supported=chapter_analysis_supported,
         )

@@ -128,6 +128,28 @@ class ResultDownloads(BaseModel):
     coverage_95_anki: str
 
 
+class ChapterSummary(BaseModel):
+    chapter_id: int
+    chapter_index: int
+    chapter_title: str
+    total_word_count: int
+    unique_word_count: int
+    to_memorize_word_count: int
+    coverage_95_word_count: int
+    reading_advice: ReadingAdvice
+
+
+class ChapterListResponse(BaseModel):
+    supported: bool
+    items: list[ChapterSummary]
+
+
+class ChapterDetailResponse(BaseModel):
+    result_id: int
+    chapter: ChapterSummary
+    downloads: ResultDownloads
+
+
 class AnalysisResultResponse(BaseModel):
     result_id: int
     job_id: int
@@ -138,6 +160,7 @@ class AnalysisResultResponse(BaseModel):
     known_words_value: str
     created_at: str
     downloads: ResultDownloads
+    chapter_analysis_supported: bool = False
 
 
 class AnalysisJobCreateResult(BaseModel):

@@ -3,10 +3,10 @@
     <div class="distribution-head">
       <div class="section-heading">
         <span class="eyebrow">Word Curve</span>
-        <h3>词汇分布曲线</h3>
-        <p>横轴为 COCA 分档，纵轴为该档位单词在本书中的累计出现次数。</p>
+        <h3>{{ title }}</h3>
+        <p>{{ description }}</p>
       </div>
-      <p class="distribution-note">灰色/未知档表示没有匹配到 COCA 排名的词。</p>
+      <p class="distribution-note">{{ note }}</p>
     </div>
 
     <div v-if="loading" class="distribution-state">
@@ -46,7 +46,11 @@ type DistributionResponse = {
 }
 
 const props = defineProps<{
-  resultId: number
+  resultId?: number
+  distributionPath?: string
+  title?: string
+  description?: string
+  note?: string
 }>()
 
 const { request } = useApi()
@@ -55,6 +59,18 @@ const chart = shallowRef<echarts.ECharts | null>(null)
 const loading = ref(true)
 const errorMessage = ref('')
 const distribution = ref<DistributionResponse | null>(null)
+const title = computed(() => props.title || '词汇分布曲线')
+const description = computed(() => props.description || '横轴为 COCA 分档，纵轴为该档位单词在本书中的累计出现次数。')
+const note = computed(() => props.note || '灰色/未知档表示没有匹配到 COCA 排名的词。')
+const resolvedDistributionPath = computed(() => {
+  if (props.distributionPath) {
+    return props.distributionPath
+  }
+  if (typeof props.resultId === 'number') {
+    return `/analysis/results/${props.resultId}/distribution`
+  }
+  return ''
+})
 
 const knownWordsLineIndex = computed(() => {
   if (!distribution.value || distribution.value.known_words_mode !== 'coca_rank') {
@@ -237,7 +253,10 @@ const loadDistribution = async () => {
   loading.value = true
   errorMessage.value = ''
   try {
-    distribution.value = await request<DistributionResponse>(`/analysis/results/${props.resultId}/distribution`)
+    if (!resolvedDistributionPath.value) {
+      throw new Error('词汇分布地址不存在')
+    }
+    distribution.value = await request<DistributionResponse>(resolvedDistributionPath.value)
   } catch (error: any) {
     errorMessage.value = error?.data?.message || error?.message || '请稍后重试'
     ElMessage.error(errorMessage.value)
@@ -253,7 +272,7 @@ const resizeChart = () => {
 }
 
 watch(
-  () => props.resultId,
+  () => resolvedDistributionPath.value,
   async () => {
     distribution.value = null
     await loadDistribution()

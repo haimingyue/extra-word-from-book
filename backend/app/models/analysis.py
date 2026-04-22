@@ -64,6 +64,31 @@ class AnalysisResult(Base):
     )
 
 
+class AnalysisResultChapter(Base):
+    __tablename__ = "analysis_result_chapters"
+    __table_args__ = (
+        UniqueConstraint("result_id", "chapter_index", name="uq_result_chapter_index"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    result_id: Mapped[int] = mapped_column(ForeignKey("analysis_results.id"), index=True)
+    chapter_index: Mapped[int] = mapped_column()
+    chapter_title: Mapped[str] = mapped_column(String(255))
+    total_word_count: Mapped[int] = mapped_column()
+    unique_word_count: Mapped[int] = mapped_column()
+    to_memorize_word_count: Mapped[int] = mapped_column()
+    coverage_95_word_count: Mapped[int] = mapped_column()
+    reading_level: Mapped[str] = mapped_column(String(20))
+    reading_message: Mapped[str] = mapped_column(String(255))
+    all_words_file_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    to_memorize_file_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    coverage_95_file_key: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+
 class AnalysisResultItem(Base):
     __tablename__ = "analysis_result_items"
     __table_args__ = (

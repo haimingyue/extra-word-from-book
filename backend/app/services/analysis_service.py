@@ -6,11 +6,12 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException, status
+from sqlalchemy.exc import OperationalError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.analysis import AnalysisJob, AnalysisResult, AnalysisResultItem
+from app.models.analysis import AnalysisJob, AnalysisResult, AnalysisResultChapter, AnalysisResultItem
 from app.models.book import Book
 from app.models.user import UserVocabularyItem
 from app.pipeline.analysis_pipeline import AnalysisPipeline
@@ -18,8 +19,13 @@ from app.schemas.analysis import (
     AnalysisDistributionResponse,
     AnalysisJobResponse,
     AnalysisResultResponse,
+    ChapterDetailResponse,
+    ChapterListResponse,
+    ChapterSummary,
     DistributionBucket,
     KnownWordsMode,
+    ReadingAdvice,
+    ResultDownloads,
 )
 
 
@@ -75,6 +81,7 @@ class AnalysisService:
             db.commit()
 
             user_known_words = self._load_user_known_words(db, user_id)
+            chapter_analysis_supported = book.file_type == "epub"
             pipeline_result = self.pipeline.run(
                 Path(book.storage_key),
                 book.file_type,
@@ -112,6 +119,16 @@ class AnalysisService:
             result.coverage_95_file_key = str(coverage_95_path.as_posix())
             db.commit()
 
+            if chapter_analysis_supported:
+                self._persist_chapter_results(
+                    db=db,
+                    result=result,
+                    book=book,
+                    known_words_mode=known_words_mode,
+                    known_words_value=known_words_value,
+                    user_known_words=user_known_words,
+                )
+
             if self.settings.enable_analysis_result_items:
                 self._persist_result_items(
                     db,
@@ -128,9 +145,10 @@ class AnalysisService:
 
             return self.to_job_response(job=job, result_id=result.id)
         except Exception as exc:
+            db.rollback()
             job.status = "failed"
             job.error_code = "internal_error"
-            job.error_message = str(exc)[:500]
+            job.error_message = self._build_job_error_message(exc)[:500]
             job.finished_at = datetime.now(UTC)
             db.commit()
             db.refresh(job)
@@ -174,6 +192,7 @@ class AnalysisService:
             reading_label=self._reading_label(result.reading_level),
             reading_color=self._reading_color(result.reading_level),
             reading_message=result.reading_message,
+            chapter_analysis_supported=book.file_type == "epub",
         )
 
     def get_download_path(self, db: Session, user_id: int, result_id: int, download_type: str) -> Path:
@@ -196,6 +215,75 @@ class AnalysisService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
         return download_path
 
+    def list_chapters(self, db: Session, user_id: int, result_id: int) -> ChapterListResponse:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        book = db.get(Book, result.book_id)
+        if book is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="book not found")
+
+        if book.file_type != "epub":
+            return ChapterListResponse(supported=False, items=[])
+
+        chapters = db.scalars(
+            select(AnalysisResultChapter)
+            .where(AnalysisResultChapter.result_id == result.id)
+            .order_by(AnalysisResultChapter.chapter_index.asc())
+        ).all()
+        return ChapterListResponse(
+            supported=True,
+            items=[self._to_chapter_summary(chapter) for chapter in chapters],
+        )
+
+    def get_chapter_detail(self, db: Session, user_id: int, result_id: int, chapter_id: int) -> ChapterDetailResponse:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        chapter = db.get(AnalysisResultChapter, chapter_id)
+        if chapter is None or chapter.result_id != result.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter not found")
+
+        return ChapterDetailResponse(
+            result_id=result.id,
+            chapter=self._to_chapter_summary(chapter),
+            downloads=self._build_chapter_downloads(result.id, chapter.id),
+        )
+
+    def get_chapter_download_path(
+        self,
+        db: Session,
+        user_id: int,
+        result_id: int,
+        chapter_id: int,
+        download_type: str,
+    ) -> Path:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        chapter = db.get(AnalysisResultChapter, chapter_id)
+        if chapter is None or chapter.result_id != result.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter not found")
+
+        path_map = {
+            "all_words": chapter.all_words_file_key,
+            "to_memorize": chapter.to_memorize_file_key,
+            "coverage_95": chapter.coverage_95_file_key,
+            "coverage_95_anki": self._build_anki_download_path(chapter.coverage_95_file_key),
+        }
+        file_key = path_map[download_type]
+        if not file_key:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
+        download_path = Path(file_key)
+        if download_type == "coverage_95_anki" and not download_path.exists():
+            self._ensure_anki_export(download_path=download_path, coverage_95_file_key=chapter.coverage_95_file_key)
+        if not download_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="download file not found")
+        return download_path
+
     def get_distribution(self, db: Session, user_id: int, result_id: int) -> AnalysisDistributionResponse:
         result = db.get(AnalysisResult, result_id)
         if result is None or result.user_id != user_id:
@@ -207,6 +295,40 @@ class AnalysisService:
             bucket_totals = self._load_distribution_from_csv(result.all_words_file_key)
 
         total_word_count = result.total_word_count if result.total_word_count > 0 else sum(bucket_totals.values())
+        buckets = [
+            DistributionBucket(
+                key=bucket["key"],
+                label=bucket["label"],
+                token_count=bucket_totals[bucket["key"]],
+                token_ratio=(bucket_totals[bucket["key"]] / total_word_count) if total_word_count > 0 else 0,
+            )
+            for bucket in DISTRIBUTION_BUCKETS
+        ]
+        return AnalysisDistributionResponse(
+            buckets=buckets,
+            known_words_mode=self._coerce_known_words_mode(job),
+            known_words_value=self._coerce_known_words_value(job),
+            total_word_count=total_word_count,
+        )
+
+    def get_chapter_distribution(
+        self,
+        db: Session,
+        user_id: int,
+        result_id: int,
+        chapter_id: int,
+    ) -> AnalysisDistributionResponse:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        chapter = db.get(AnalysisResultChapter, chapter_id)
+        if chapter is None or chapter.result_id != result.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter not found")
+
+        job = self._get_job(db, result.job_id)
+        bucket_totals = self._load_distribution_from_csv(chapter.all_words_file_key)
+        total_word_count = chapter.total_word_count if chapter.total_word_count > 0 else sum(bucket_totals.values())
         buckets = [
             DistributionBucket(
                 key=bucket["key"],
@@ -289,6 +411,62 @@ class AnalysisService:
 
         self.pipeline.write_anki_csv(coverage_rows, download_path)
 
+    def _persist_chapter_results(
+        self,
+        db: Session,
+        result: AnalysisResult,
+        book: Book,
+        known_words_mode: KnownWordsMode,
+        known_words_value: str,
+        user_known_words: set[str],
+    ) -> None:
+        chapter_texts = self.pipeline.extract_chapters(Path(book.storage_key), book.file_type)
+        if not chapter_texts:
+            return
+
+        resources = self.pipeline.load_resources()
+        chapter_records: list[AnalysisResultChapter] = []
+
+        for chapter_text in chapter_texts:
+            chapter_result = self.pipeline.run_for_text(
+                raw_text=chapter_text.text,
+                known_words_mode=known_words_mode,
+                known_words_value=known_words_value,
+                user_known_words=user_known_words,
+                resources=resources,
+            )
+            chapter_dir = self.settings.results_storage_dir / str(result.id) / f"chapter_{chapter_text.chapter_index}"
+            all_words_path = chapter_dir / "all_words.csv"
+            to_memorize_path = chapter_dir / "to_memorize.csv"
+            coverage_95_path = chapter_dir / "coverage_95.csv"
+            coverage_95_anki_path = chapter_dir / "coverage_95_anki.csv"
+
+            self.pipeline.write_csv(chapter_result.all_words_rows, all_words_path)
+            self.pipeline.write_csv(chapter_result.to_memorize_rows, to_memorize_path)
+            self.pipeline.write_csv(chapter_result.coverage_95_rows, coverage_95_path)
+            self.pipeline.write_anki_csv(chapter_result.coverage_95_rows, coverage_95_anki_path)
+
+            chapter_records.append(
+                AnalysisResultChapter(
+                    result_id=result.id,
+                    chapter_index=chapter_text.chapter_index,
+                    chapter_title=chapter_text.chapter_title,
+                    total_word_count=chapter_result.total_word_count,
+                    unique_word_count=chapter_result.unique_word_count,
+                    to_memorize_word_count=chapter_result.to_memorize_word_count,
+                    coverage_95_word_count=chapter_result.coverage_95_word_count,
+                    reading_level=chapter_result.reading_level,
+                    reading_message=chapter_result.reading_message,
+                    all_words_file_key=str(all_words_path.as_posix()),
+                    to_memorize_file_key=str(to_memorize_path.as_posix()),
+                    coverage_95_file_key=str(coverage_95_path.as_posix()),
+                )
+            )
+
+        if chapter_records:
+            db.add_all(chapter_records)
+            db.commit()
+
     def _persist_result_items(
         self,
         db: Session,
@@ -351,6 +529,32 @@ class AnalysisService:
             "level_3": "red",
         }[level]
 
+    def _to_chapter_summary(self, chapter: AnalysisResultChapter) -> ChapterSummary:
+        return ChapterSummary(
+            chapter_id=chapter.id,
+            chapter_index=chapter.chapter_index,
+            chapter_title=chapter.chapter_title,
+            total_word_count=chapter.total_word_count,
+            unique_word_count=chapter.unique_word_count,
+            to_memorize_word_count=chapter.to_memorize_word_count,
+            coverage_95_word_count=chapter.coverage_95_word_count,
+            reading_advice=ReadingAdvice(
+                level=chapter.reading_level,
+                label=self._reading_label(chapter.reading_level),
+                color=self._reading_color(chapter.reading_level),
+                message=chapter.reading_message,
+            ),
+        )
+
+    def _build_chapter_downloads(self, result_id: int, chapter_id: int) -> ResultDownloads:
+        base_path = f"/api/v1/analysis/results/{result_id}/chapters/{chapter_id}/downloads"
+        return ResultDownloads(
+            all_words=f"{base_path}/all_words",
+            to_memorize=f"{base_path}/to_memorize",
+            coverage_95=f"{base_path}/coverage_95",
+            coverage_95_anki=f"{base_path}/coverage_95_anki",
+        )
+
     def to_job_response(self, job: AnalysisJob, result_id: int | None) -> AnalysisJobResponse:
         return AnalysisJobResponse(
             job_id=job.id,
@@ -382,3 +586,10 @@ class AnalysisService:
         if job.known_words_level is not None:
             return str(job.known_words_level)
         return "3000"
+
+    def _build_job_error_message(self, exc: Exception) -> str:
+        if isinstance(exc, OperationalError):
+            detail = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "no such table: analysis_result_chapters" in detail:
+                return "database schema is outdated: run `alembic upgrade head` to create analysis_result_chapters"
+        return str(exc)

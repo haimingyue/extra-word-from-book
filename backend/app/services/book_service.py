@@ -12,7 +12,13 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
-from app.models.analysis import AnalysisJob, AnalysisJobVocabularySnapshot, AnalysisResult, AnalysisResultItem
+from app.models.analysis import (
+    AnalysisJob,
+    AnalysisJobVocabularySnapshot,
+    AnalysisResult,
+    AnalysisResultChapter,
+    AnalysisResultItem,
+)
 from app.models.book import Book
 from app.schemas.books import HistoryItem
 
@@ -122,8 +128,9 @@ class BookService:
         job = db.get(AnalysisJob, result.job_id)
         book = db.get(Book, result.book_id)
 
-        self._delete_result_files(result)
+        self._delete_result_files(db=db, result=result)
 
+        db.execute(delete(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id))
         db.execute(delete(AnalysisResultItem).where(AnalysisResultItem.result_id == result.id))
         db.delete(result)
 
@@ -234,13 +241,27 @@ class BookService:
     def _build_storage_path(self, file_hash: str, file_type: str) -> Path:
         return self.settings.books_storage_dir / f"{file_hash}.{file_type}"
 
-    def _delete_result_files(self, result: AnalysisResult) -> None:
+    def _delete_result_files(self, db: Session, result: AnalysisResult) -> None:
+        chapter_rows = db.scalars(
+            select(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id)
+        ).all()
         paths = [
             result.all_words_file_key,
             result.to_memorize_file_key,
             result.coverage_95_file_key,
             str(Path(result.coverage_95_file_key).with_name("coverage_95_anki.csv")) if result.coverage_95_file_key else None,
         ]
+        for chapter in chapter_rows:
+            paths.extend(
+                [
+                    chapter.all_words_file_key,
+                    chapter.to_memorize_file_key,
+                    chapter.coverage_95_file_key,
+                    str(Path(chapter.coverage_95_file_key).with_name("coverage_95_anki.csv"))
+                    if chapter.coverage_95_file_key
+                    else None,
+                ]
+            )
         deleted_parents: set[Path] = set()
 
         for raw_path in paths:
@@ -254,6 +275,9 @@ class BookService:
                 if parent not in deleted_parents and parent.exists() and not any(parent.iterdir()):
                     parent.rmdir()
                     deleted_parents.add(parent)
+                    grandparent = parent.parent
+                    if grandparent.exists() and grandparent != self.settings.results_storage_dir and not any(grandparent.iterdir()):
+                        grandparent.rmdir()
             except OSError:
                 continue
 
