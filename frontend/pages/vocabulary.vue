@@ -81,6 +81,16 @@
                 :value="vocabulary.vocabulary_id"
               />
             </el-select>
+            <el-button
+              round
+              plain
+              type="danger"
+              :disabled="!activeVocabulary || !activeVocabulary.item_count"
+              :loading="clearingAll"
+              @click="clearVocabulary"
+            >
+              一键清空词库
+            </el-button>
             <el-button round :loading="loading" @click="loadItems">刷新</el-button>
           </div>
         </div>
@@ -144,7 +154,7 @@
         </div>
 
         <div v-else-if="items.length" class="item-list">
-          <article v-for="item in items" :key="item.item_id" class="item-row">
+          <article v-for="item in items" :key="item.item_id" class="item-row compact-item-row">
             <label class="item-check">
               <input
                 type="checkbox"
@@ -152,12 +162,14 @@
                 @change="toggleItemSelection(item.item_id)"
               >
             </label>
-            <div class="item-copy">
-              <strong>{{ item.word }}</strong>
-              <span>{{ item.lemma || '无原型信息' }}</span>
+            <div class="item-copy compact-item-copy">
+              <div class="word-line">
+                <strong>{{ item.word }}</strong>
+                <span v-if="item.lemma" class="lemma-chip">原型 {{ item.lemma }}</span>
+              </div>
+              <span>{{ item.lemma ? '已记录原型信息' : '无原型信息' }}</span>
             </div>
-            <div class="item-actions">
-              <span class="surface-tag">{{ activeVocabulary?.name || '主词库' }}</span>
+            <div class="item-actions compact-item-actions">
               <el-button text type="danger" @click="deleteWord(item.item_id)">删除</el-button>
             </div>
           </article>
@@ -231,6 +243,7 @@ const loading = ref(false)
 const uploading = ref(false)
 const creating = ref(false)
 const batchDeleting = ref(false)
+const clearingAll = ref(false)
 const vocabularies = ref<VocabularyListItem[]>([])
 const activeVocabularyId = ref<number | null>(null)
 const items = ref<VocabularyItem[]>([])
@@ -439,6 +452,41 @@ const deleteSelected = async () => {
     }
   } finally {
     batchDeleting.value = false
+  }
+}
+
+const clearVocabulary = async () => {
+  if (!activeVocabulary.value) {
+    return
+  }
+
+  await ElMessageBox.confirm(
+    `确认清空“${activeVocabulary.value.name}”中的全部词条吗？这个操作不可撤销。`,
+    '清空词库',
+    {
+      type: 'warning',
+      confirmButtonText: '确认清空',
+      cancelButtonText: '取消'
+    }
+  )
+
+  clearingAll.value = true
+  try {
+    const response = await request<{ vocabulary_id: number; deleted_count: number; cleared: boolean }>(
+      `/vocabularies/${activeVocabulary.value.vocabulary_id}/items`,
+      {
+        method: 'DELETE'
+      }
+    )
+    selectedItemIds.value = []
+    ElMessage.success(`已清空 ${response.deleted_count} 个词条`)
+    await loadVocabularies()
+  } catch (error: any) {
+    if (error !== 'cancel') {
+      ElMessage.error(error?.data?.message || error?.message || '清空词库失败')
+    }
+  } finally {
+    clearingAll.value = false
   }
 }
 
@@ -655,6 +703,43 @@ watch(
   line-height: 1;
 }
 
+.compact-item-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 14px 6px;
+}
+
+.compact-item-copy {
+  gap: 8px;
+}
+
+.word-line {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.word-line strong {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+}
+
+.lemma-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(79, 118, 255, 0.12);
+  color: var(--primary-600);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .item-copy span,
 .pagination-copy span,
 .empty-inline p {
@@ -663,6 +748,10 @@ watch(
 
 .item-actions {
   justify-content: flex-end;
+}
+
+.compact-item-actions {
+  min-width: fit-content;
 }
 
 .empty-inline h3,
@@ -689,10 +778,13 @@ watch(
 @media (max-width: 860px) {
   .list-header,
   .bulk-bar,
-  .item-row,
   .pagination-panel {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .compact-item-row {
+    grid-template-columns: auto minmax(0, 1fr);
   }
 
   .item-actions {

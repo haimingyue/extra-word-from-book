@@ -150,6 +150,13 @@ class ChapterDetailResponse(BaseModel):
     downloads: ResultDownloads
 
 
+class ChapterVocabularyImportResponse(BaseModel):
+    vocabulary_id: int
+    name: str
+    imported_count: int
+    deduplicated_count: int
+
+
 class AnalysisResultResponse(BaseModel):
     result_id: int
     job_id: int

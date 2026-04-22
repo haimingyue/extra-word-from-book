@@ -12,6 +12,7 @@ from app.db.base import Base
 from app.models.analysis import AnalysisResult, AnalysisResultChapter
 from app.models.book import Book
 from app.models.user import User
+from app.models.user import UserVocabulary, UserVocabularyItem
 from app.pipeline.analysis_pipeline import AnalysisPipeline
 from app.schemas.analysis import KnownWordsMode
 from app.services.analysis_service import AnalysisService
@@ -125,6 +126,18 @@ class AnalysisChaptersTestCase(unittest.TestCase):
                 download_type="coverage_95_anki",
             )
             self.assertTrue(chapter_download.exists())
+
+            import_response = self.analysis_service.import_chapter_words_to_vocabulary(
+                db=db,
+                user_id=user.id,
+                result_id=result.id,
+                chapter_id=chapters[0].id,
+            )
+            self.assertGreater(import_response.imported_count, 0)
+            vocabulary = db.get(UserVocabulary, import_response.vocabulary_id)
+            self.assertIsNotNone(vocabulary)
+            imported_items = db.query(UserVocabularyItem).filter(UserVocabularyItem.vocabulary_id == vocabulary.id).count()
+            self.assertEqual(imported_items, vocabulary.item_count)
 
             self.book_service.delete_history(db=db, user_id=user.id, result_id=result.id)
             self.assertFalse(chapter_download.exists())

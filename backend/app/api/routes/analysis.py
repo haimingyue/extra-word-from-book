@@ -9,6 +9,7 @@ from app.schemas.analysis import (
     AnalysisJobCreateRequest,
     AnalysisJobResponse,
     AnalysisResultResponse,
+    ChapterVocabularyImportResponse,
     ChapterDetailResponse,
     ChapterListResponse,
     DownloadType,
@@ -145,6 +146,28 @@ def get_result_chapter_distribution(
         chapter_id=chapter_id,
     )
     return ApiResponse(data=distribution)
+
+
+@router.post(
+    "/results/{result_id}/chapters/{chapter_id}/import-to-vocabulary",
+    response_model=ApiResponse[ChapterVocabularyImportResponse],
+    summary="Import Chapter Words To Vocabulary",
+    description="Import chapter coverage_95 words into the current user's primary vocabulary.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def import_result_chapter_to_vocabulary(
+    result_id: int,
+    chapter_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[ChapterVocabularyImportResponse]:
+    response = analysis_service.import_chapter_words_to_vocabulary(
+        db=db,
+        user_id=user_id,
+        result_id=result_id,
+        chapter_id=chapter_id,
+    )
+    return ApiResponse(data=response)
 
 
 @router.get(

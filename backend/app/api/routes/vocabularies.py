@@ -10,6 +10,7 @@ from app.schemas.vocabularies import (
     VocabularyItemCreateRequest,
     VocabularyItemCreateResponse,
     VocabularyItemDeleteResponse,
+    VocabularyItemsClearResponse,
     VocabularyItemsResponse,
     VocabularyListResponse,
     VocabularyUploadResponse,
@@ -141,6 +142,28 @@ def batch_delete_vocabulary_items(
         item_ids=payload.item_ids,
     )
     return ApiResponse(data=VocabularyItemBatchDeleteResponse(deleted_count=deleted_count))
+
+
+@router.delete(
+    "/{vocabulary_id}/items",
+    response_model=ApiResponse[VocabularyItemsClearResponse],
+    summary="Clear Vocabulary Items",
+    description="Delete all items in a vocabulary owned by the current authenticated user.",
+    responses={401: {"model": ErrorResponse}, 404: {"model": ErrorResponse}},
+)
+def clear_vocabulary_items(
+    vocabulary_id: int,
+    db: Session = Depends(get_db),
+    user_id: int = Depends(get_current_user_id),
+) -> ApiResponse[VocabularyItemsClearResponse]:
+    deleted_count = vocabulary_service.clear_items(db=db, user_id=user_id, vocabulary_id=vocabulary_id)
+    return ApiResponse(
+        data=VocabularyItemsClearResponse(
+            vocabulary_id=vocabulary_id,
+            deleted_count=deleted_count,
+            cleared=True,
+        )
+    )
 
 
 @router.delete(

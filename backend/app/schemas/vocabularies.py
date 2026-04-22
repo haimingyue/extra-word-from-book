@@ -43,6 +43,13 @@ class VocabularyItemCreateResponse(BaseModel):
     created: bool
 
 
+class VocabularyWordsImportResponse(BaseModel):
+    vocabulary_id: int
+    name: str
+    imported_count: int
+    deduplicated_count: int
+
+
 class VocabularyItemDeleteResponse(BaseModel):
     item_id: int
     deleted: bool
@@ -54,3 +61,9 @@ class VocabularyItemBatchDeleteRequest(BaseModel):
 
 class VocabularyItemBatchDeleteResponse(BaseModel):
     deleted_count: int
+
+
+class VocabularyItemsClearResponse(BaseModel):
+    vocabulary_id: int
+    deleted_count: int
+    cleared: bool

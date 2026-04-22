@@ -19,6 +19,7 @@ from app.schemas.analysis import (
     AnalysisDistributionResponse,
     AnalysisJobResponse,
     AnalysisResultResponse,
+    ChapterVocabularyImportResponse,
     ChapterDetailResponse,
     ChapterListResponse,
     ChapterSummary,
@@ -27,6 +28,7 @@ from app.schemas.analysis import (
     ReadingAdvice,
     ResultDownloads,
 )
+from app.services.vocabulary_service import VocabularyService
 
 
 logger = logging.getLogger(__name__)
@@ -49,6 +51,7 @@ class AnalysisService:
     def __init__(self) -> None:
         self.settings = get_settings()
         self.pipeline = AnalysisPipeline()
+        self.vocabulary_service = VocabularyService()
 
     def create_job(
         self,
@@ -343,6 +346,46 @@ class AnalysisService:
             known_words_mode=self._coerce_known_words_mode(job),
             known_words_value=self._coerce_known_words_value(job),
             total_word_count=total_word_count,
+        )
+
+    def import_chapter_words_to_vocabulary(
+        self,
+        db: Session,
+        user_id: int,
+        result_id: int,
+        chapter_id: int,
+    ) -> ChapterVocabularyImportResponse:
+        result = db.get(AnalysisResult, result_id)
+        if result is None or result.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+
+        chapter = db.get(AnalysisResultChapter, chapter_id)
+        if chapter is None or chapter.result_id != result.id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter not found")
+        if not chapter.coverage_95_file_key:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter vocabulary source not found")
+
+        coverage_path = Path(chapter.coverage_95_file_key)
+        if not coverage_path.exists():
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="chapter vocabulary source not found")
+
+        with coverage_path.open("r", newline="", encoding="utf-8-sig") as file:
+            reader = csv.DictReader(file)
+            words = [str(row.get("单词", "")).strip() for row in reader if str(row.get("单词", "")).strip()]
+
+        vocabulary_id, name, imported_count, deduplicated_count = self.vocabulary_service.import_words(
+            db=db,
+            user_id=user_id,
+            words=words,
+            vocabulary_id=None,
+            source_type="analysis_chapter_import",
+            source_file_key=f"analysis_result:{result.id}:chapter:{chapter.id}:coverage_95",
+        )
+        return ChapterVocabularyImportResponse(
+            vocabulary_id=vocabulary_id,
+            name=name,
+            imported_count=imported_count,
+            deduplicated_count=deduplicated_count,
         )
 
     def _build_anki_download_path(self, coverage_95_file_key: str | None) -> str | None:

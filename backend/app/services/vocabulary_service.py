@@ -144,6 +144,39 @@ class VocabularyService:
         db.commit()
         return item.id, True
 
+    def import_words(
+        self,
+        db: Session,
+        user_id: int,
+        words: list[str],
+        vocabulary_id: int | None = None,
+        source_type: str = "manual",
+        source_file_key: str | None = None,
+    ) -> tuple[int, str, int, int]:
+        normalized_words = [normalized for word in words if (normalized := self._normalize_word(word))]
+        if not normalized_words:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="no valid words found")
+
+        if vocabulary_id is None:
+            vocabulary = self._get_or_create_primary_vocabulary(
+                db,
+                user_id=user_id,
+                provided_name="我的主词库",
+            )
+        else:
+            vocabulary = db.get(UserVocabulary, vocabulary_id)
+            if vocabulary is None or vocabulary.user_id != user_id:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vocabulary not found")
+
+        imported_count, deduplicated_count = self._upsert_items(db, vocabulary, normalized_words)
+        vocabulary.item_count = self._count_vocabulary_items(db, vocabulary.id)
+        vocabulary.source_type = source_type
+        vocabulary.source_file_key = source_file_key
+        vocabulary.updated_at = datetime.now(UTC)
+        db.commit()
+        db.refresh(vocabulary)
+        return vocabulary.id, vocabulary.name, imported_count, deduplicated_count
+
     def delete_item(self, db: Session, user_id: int, item_id: int) -> bool:
         item = db.get(UserVocabularyItem, item_id)
         if item is None:
@@ -192,6 +225,38 @@ class VocabularyService:
             vocabulary.updated_at = datetime.now(UTC)
         db.commit()
         return len(items)
+
+    def clear_items(self, db: Session, user_id: int, vocabulary_id: int) -> int:
+        vocabulary = db.get(UserVocabulary, vocabulary_id)
+        if vocabulary is None or vocabulary.user_id != user_id:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="vocabulary not found")
+
+        deleted_count = db.scalar(
+            select(func.count()).select_from(
+                select(UserVocabularyItem.id)
+                .where(
+                    UserVocabularyItem.vocabulary_id == vocabulary_id,
+                    UserVocabularyItem.user_id == user_id,
+                )
+                .subquery()
+            )
+        )
+        if not deleted_count:
+            vocabulary.item_count = 0
+            vocabulary.updated_at = datetime.now(UTC)
+            db.commit()
+            return 0
+
+        db.execute(
+            delete(UserVocabularyItem).where(
+                UserVocabularyItem.vocabulary_id == vocabulary_id,
+                UserVocabularyItem.user_id == user_id,
+            )
+        )
+        vocabulary.item_count = 0
+        vocabulary.updated_at = datetime.now(UTC)
+        db.commit()
+        return int(deleted_count)
 
     def _extract_words_from_txt(self, text: str) -> list[str]:
         words: list[str] = []

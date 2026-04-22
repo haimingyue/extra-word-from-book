@@ -251,15 +251,47 @@
           </div>
 
           <div class="chapter-downloads">
-            <el-button
+            <div
               v-for="download in downloadCards"
               :key="`chapter-${download.key}`"
+              class="chapter-download-row"
+            >
+              <el-button
+                round
+                size="large"
+                class="chapter-download-button"
+                :loading="downloading === `chapter:${download.key}`"
+                @click="handleChapterDownload(download.key, download.filename)"
+              >
+                下载本章 {{ download.filename }}
+              </el-button>
+              <el-button
+                v-if="download.key === 'coverage_95_anki'"
+                round
+                size="large"
+                type="primary"
+                plain
+                :loading="importingChapterWords"
+                @click="handleImportChapterWords"
+              >
+                添加到个人词库
+              </el-button>
+            </div>
+          </div>
+
+          <div v-if="showReanalyzeAfterImport" class="chapter-reanalyze-bar">
+            <div class="compact-copy">
+              <strong>个人词库已更新</strong>
+              <p>现在可以基于当前已掌握范围和最新词库，重新分析这本书。</p>
+            </div>
+            <el-button
+              type="primary"
               round
               size="large"
-              :loading="downloading === `chapter:${download.key}`"
-              @click="handleChapterDownload(download.key, download.filename)"
+              :loading="restartingAnalysis"
+              @click="handleReanalyzeCurrentBook"
             >
-              下载本章 {{ download.filename }}
+              重新分析本书
             </el-button>
           </div>
         </section>
@@ -340,6 +372,13 @@ type ChapterDetail = {
   downloads: Record<string, string>
 }
 
+type ChapterVocabularyImportResponse = {
+  vocabulary_id: number
+  name: string
+  imported_count: number
+  deduplicated_count: number
+}
+
 type JobState = 'loading' | 'processing' | 'completed' | 'failed' | 'empty'
 
 const route = useRoute()
@@ -356,6 +395,9 @@ const chaptersLoading = ref(false)
 const activeChapter = ref<ChapterDetail | null>(null)
 const chapterDetailLoading = ref(false)
 const chapterDialogVisible = ref(false)
+const importingChapterWords = ref(false)
+const showReanalyzeAfterImport = ref(false)
+const restartingAnalysis = ref(false)
 const failureMessage = ref('分析失败，请稍后重试。')
 const pollCount = ref(0)
 const pollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -526,6 +568,7 @@ const openChapter = async (chapterId: number) => {
   }
   chapterDialogVisible.value = true
   activeChapter.value = null
+  showReanalyzeAfterImport.value = false
   chapterDetailLoading.value = true
   try {
     activeChapter.value = await request<ChapterDetail>(`/analysis/results/${result.value.result_id}/chapters/${chapterId}`)
@@ -576,6 +619,67 @@ const handleChapterDownload = async (key: string, filename: string) => {
     ElMessage.error(error?.message || '下载失败')
   } finally {
     downloading.value = ''
+  }
+}
+
+const handleImportChapterWords = async () => {
+  if (!activeChapter.value) {
+    return
+  }
+  importingChapterWords.value = true
+  try {
+    const response = await request<ChapterVocabularyImportResponse>(
+      `/analysis/results/${activeChapter.value.result_id}/chapters/${activeChapter.value.chapter.chapter_id}/import-to-vocabulary`,
+      {
+        method: 'POST'
+      }
+    )
+    showReanalyzeAfterImport.value = true
+    if (response.imported_count > 0) {
+      ElMessage.success(`已添加 ${response.imported_count} 个单词到${response.name}`)
+      return
+    }
+    ElMessage.success(`本章核心词已在${response.name}中，无需重复添加`)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '添加到个人词库失败')
+  } finally {
+    importingChapterWords.value = false
+  }
+}
+
+const handleReanalyzeCurrentBook = async () => {
+  if (!result.value) {
+    return
+  }
+  restartingAnalysis.value = true
+  try {
+    const job = await request<{
+      job_id: number
+      book_id: number
+      status: string
+      known_words_mode: 'exam_level' | 'coca_rank'
+      known_words_value: string
+      result_id?: number | null
+    }>('/analysis/jobs', {
+      method: 'POST',
+      body: {
+        book_id: result.value.book.book_id,
+        known_words_mode: result.value.known_words_mode,
+        known_words_value: result.value.known_words_value
+      }
+    })
+
+    chapterDialogVisible.value = false
+    showReanalyzeAfterImport.value = false
+    ElMessage.success('已基于最新个人词库重新发起分析')
+    await router.replace({
+      path: route.path,
+      query: { jobId: String(job.job_id) }
+    })
+  } catch (error: any) {
+    ElMessage.error(error?.message || '重新分析失败')
+  } finally {
+    restartingAnalysis.value = false
   }
 }
 
@@ -854,6 +958,28 @@ onBeforeUnmount(() => {
   border: 1px solid rgba(78, 123, 255, 0.12);
 }
 
+.chapter-download-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.chapter-download-button {
+  width: 100%;
+}
+
+.chapter-reanalyze-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(78, 123, 255, 0.14);
+}
+
 .chapter-dialog-loading {
   min-height: 480px;
 }
@@ -890,6 +1016,15 @@ onBeforeUnmount(() => {
   .chapter-dialog-header,
   .chapter-hero {
     grid-template-columns: 1fr;
+  }
+
+  .chapter-download-row {
+    grid-template-columns: 1fr;
+  }
+
+  .chapter-reanalyze-bar {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .chapter-hero-ring {
