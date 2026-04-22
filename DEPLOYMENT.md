@@ -150,6 +150,17 @@ docker compose build backend
 docker compose up -d backend nginx
 ```
 
+```bash
+数据库更新
+cd /srv/extra-word-from-book/app
+
+docker compose build backend
+docker compose up -d backend
+docker compose exec backend alembic current
+docker compose exec backend alembic upgrade head
+```
+
+
 
 如果只需要重启服务而不重建镜像：
 

@@ -9,6 +9,7 @@ from zipfile import BadZipFile, ZipFile
 
 from fastapi import HTTPException, UploadFile, status
 from sqlalchemy import delete, func, select
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
@@ -130,7 +131,8 @@ class BookService:
 
         self._delete_result_files(db=db, result=result)
 
-        db.execute(delete(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id))
+        if self._analysis_result_chapters_table_exists(db):
+            db.execute(delete(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id))
         db.execute(delete(AnalysisResultItem).where(AnalysisResultItem.result_id == result.id))
         db.delete(result)
 
@@ -242,9 +244,11 @@ class BookService:
         return self.settings.books_storage_dir / f"{file_hash}.{file_type}"
 
     def _delete_result_files(self, db: Session, result: AnalysisResult) -> None:
-        chapter_rows = db.scalars(
-            select(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id)
-        ).all()
+        chapter_rows: list[AnalysisResultChapter] = []
+        if self._analysis_result_chapters_table_exists(db):
+            chapter_rows = db.scalars(
+                select(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id)
+            ).all()
         paths = [
             result.all_words_file_key,
             result.to_memorize_file_key,
@@ -288,3 +292,15 @@ class BookService:
                 file_path.unlink()
         except OSError:
             return
+
+    def _analysis_result_chapters_table_exists(self, db: Session) -> bool:
+        try:
+            db.execute(select(func.count()).select_from(AnalysisResultChapter).limit(1))
+            return True
+        except OperationalError as exc:
+            detail = str(exc.orig).lower() if exc.orig else str(exc).lower()
+            if "analysis_result_chapters" in detail and ("does not exist" in detail or "no such table" in detail):
+                logger.warning("analysis_result_chapters_table_missing")
+                db.rollback()
+                return False
+            raise
