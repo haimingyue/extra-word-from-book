@@ -135,6 +135,7 @@ class BookService:
             db.execute(delete(AnalysisResultChapter).where(AnalysisResultChapter.result_id == result.id))
         db.execute(delete(AnalysisResultItem).where(AnalysisResultItem.result_id == result.id))
         db.delete(result)
+        db.commit()
 
         if job is not None:
             db.execute(delete(AnalysisJobVocabularySnapshot).where(AnalysisJobVocabularySnapshot.job_id == job.id))
