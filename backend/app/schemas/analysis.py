@@ -105,6 +105,10 @@ class DistributionBucket(BaseModel):
     label: str
     token_count: int
     token_ratio: float
+    known_token_count: int
+    known_token_ratio: float
+    cumulative_known_token_count: int
+    cumulative_known_token_ratio: float
 
 
 class AnalysisDistributionResponse(BaseModel):
@@ -112,6 +116,8 @@ class AnalysisDistributionResponse(BaseModel):
     known_words_mode: KnownWordsMode
     known_words_value: str
     total_word_count: int
+    known_token_count: int
+    known_token_ratio: float
 
 
 class ReadingAdvice(BaseModel):

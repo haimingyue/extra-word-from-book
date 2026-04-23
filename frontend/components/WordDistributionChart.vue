@@ -36,6 +36,10 @@ type DistributionBucket = {
   label: string
   token_count: number
   token_ratio: number
+  known_token_count?: number
+  known_token_ratio?: number
+  cumulative_known_token_count?: number
+  cumulative_known_token_ratio?: number
 }
 
 type DistributionResponse = {
@@ -43,6 +47,8 @@ type DistributionResponse = {
   known_words_mode: 'exam_level' | 'coca_rank'
   known_words_value: string
   total_word_count: number
+  known_token_count?: number
+  known_token_ratio?: number
 }
 
 const props = defineProps<{
@@ -99,7 +105,15 @@ const knownWordsLineIndex = computed(() => {
 })
 
 const knownWordsCoverageRatio = computed(() => {
-  if (!distribution.value || knownWordsLineIndex.value < 0 || distribution.value.total_word_count <= 0) {
+  if (!distribution.value || distribution.value.total_word_count <= 0) {
+    return null
+  }
+
+  if (typeof distribution.value.known_token_ratio === 'number') {
+    return distribution.value.known_token_ratio
+  }
+
+  if (knownWordsLineIndex.value < 0) {
     return null
   }
 
@@ -119,9 +133,9 @@ const footnote = computed(() => {
     const coverageText = knownWordsCoverageRatio.value === null
       ? ''
       : `，覆盖 ${(knownWordsCoverageRatio.value * 100).toFixed(2)}%`
-    return `虚线表示当前已掌握范围：COCA ${distribution.value.known_words_value}${coverageText}。`
+    return `虚线表示当前已掌握范围：COCA ${distribution.value.known_words_value} + 个人词库${coverageText}。`
   }
-  return '当前已掌握范围为考试词表模式，本图不展示 COCA 阈值线。'
+  return `当前已掌握范围为考试词表模式 + 个人词库，累计覆盖 ${((distribution.value.known_token_ratio || 0) * 100).toFixed(2)}%。`
 })
 
 const renderChart = () => {
@@ -160,14 +174,16 @@ const renderChart = () => {
         if (!bucket) {
           return ''
         }
-        const cumulativeRatio = distribution.value?.buckets
-          .slice(0, point.dataIndex + 1)
-          .reduce((sum, currentBucket) => sum + currentBucket.token_ratio, 0) ?? 0
+        const cumulativeKnownRatio = typeof bucket.cumulative_known_token_ratio === 'number'
+          ? bucket.cumulative_known_token_ratio
+          : distribution.value?.buckets
+            .slice(0, point.dataIndex + 1)
+            .reduce((sum, currentBucket) => sum + currentBucket.token_ratio, 0) ?? 0
         return [
           `${bucket.label}`,
           `累计出现次数：${new Intl.NumberFormat('zh-CN').format(bucket.token_count)}`,
           `占全书比例：${(bucket.token_ratio * 100).toFixed(2)}%`,
-          `累计掌握全书：${(cumulativeRatio * 100).toFixed(2)}%`
+          `累计已掌握全书：${(cumulativeKnownRatio * 100).toFixed(2)}%`
         ].join('<br/>')
       }
     },
@@ -228,7 +244,7 @@ const renderChart = () => {
               label: {
                 formatter: knownWordsCoverageRatio.value === null
                   ? `已掌握 COCA ${distribution.value.known_words_value}`
-                  : `已掌握 COCA ${distribution.value.known_words_value} ${(knownWordsCoverageRatio.value * 100).toFixed(2)}%`,
+                  : `已掌握 COCA ${distribution.value.known_words_value} + 个人词库 ${(knownWordsCoverageRatio.value * 100).toFixed(2)}%`,
                 color: '#ef5a2d',
                 fontWeight: 700
               },

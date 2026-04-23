@@ -34,6 +34,9 @@ from app.services.vocabulary_service import VocabularyService
 logger = logging.getLogger(__name__)
 
 
+DistributionTotals = dict[str, dict[str, int]]
+
+
 DISTRIBUTION_BUCKETS = [
     {"key": "coca_1_1000", "label": "1-1000", "min_rank": 1, "max_rank": 1000},
     {"key": "coca_1001_2000", "label": "1001-2000", "min_rank": 1001, "max_rank": 2000},
@@ -297,21 +300,16 @@ class AnalysisService:
         if bucket_totals is None:
             bucket_totals = self._load_distribution_from_csv(result.all_words_file_key)
 
-        total_word_count = result.total_word_count if result.total_word_count > 0 else sum(bucket_totals.values())
-        buckets = [
-            DistributionBucket(
-                key=bucket["key"],
-                label=bucket["label"],
-                token_count=bucket_totals[bucket["key"]],
-                token_ratio=(bucket_totals[bucket["key"]] / total_word_count) if total_word_count > 0 else 0,
-            )
-            for bucket in DISTRIBUTION_BUCKETS
-        ]
+        total_word_count = result.total_word_count if result.total_word_count > 0 else self._sum_distribution_total(bucket_totals)
+        buckets = self._build_distribution_buckets(bucket_totals, total_word_count)
+        known_token_count = self._sum_distribution_known(bucket_totals)
         return AnalysisDistributionResponse(
             buckets=buckets,
             known_words_mode=self._coerce_known_words_mode(job),
             known_words_value=self._coerce_known_words_value(job),
             total_word_count=total_word_count,
+            known_token_count=known_token_count,
+            known_token_ratio=(known_token_count / total_word_count) if total_word_count > 0 else 0,
         )
 
     def get_chapter_distribution(
@@ -331,21 +329,16 @@ class AnalysisService:
 
         job = self._get_job(db, result.job_id)
         bucket_totals = self._load_distribution_from_csv(chapter.all_words_file_key)
-        total_word_count = chapter.total_word_count if chapter.total_word_count > 0 else sum(bucket_totals.values())
-        buckets = [
-            DistributionBucket(
-                key=bucket["key"],
-                label=bucket["label"],
-                token_count=bucket_totals[bucket["key"]],
-                token_ratio=(bucket_totals[bucket["key"]] / total_word_count) if total_word_count > 0 else 0,
-            )
-            for bucket in DISTRIBUTION_BUCKETS
-        ]
+        total_word_count = chapter.total_word_count if chapter.total_word_count > 0 else self._sum_distribution_total(bucket_totals)
+        buckets = self._build_distribution_buckets(bucket_totals, total_word_count)
+        known_token_count = self._sum_distribution_known(bucket_totals)
         return AnalysisDistributionResponse(
             buckets=buckets,
             known_words_mode=self._coerce_known_words_mode(job),
             known_words_value=self._coerce_known_words_value(job),
             total_word_count=total_word_count,
+            known_token_count=known_token_count,
+            known_token_ratio=(known_token_count / total_word_count) if total_word_count > 0 else 0,
         )
 
     def import_chapter_words_to_vocabulary(
@@ -393,20 +386,28 @@ class AnalysisService:
             return None
         return str(Path(coverage_95_file_key).with_name("coverage_95_anki.csv"))
 
-    def _init_distribution_totals(self) -> dict[str, int]:
-        return {bucket["key"]: 0 for bucket in DISTRIBUTION_BUCKETS}
+    def _init_distribution_totals(self) -> DistributionTotals:
+        return {str(bucket["key"]): {"token_count": 0, "known_token_count": 0} for bucket in DISTRIBUTION_BUCKETS}
 
-    def _load_distribution_from_items(self, db: Session, result_id: int) -> dict[str, int] | None:
-        rows = db.scalars(select(AnalysisResultItem).where(AnalysisResultItem.result_id == result_id)).all()
+    def _load_distribution_from_items(self, db: Session, result_id: int) -> DistributionTotals | None:
+        rows = db.scalars(
+            select(AnalysisResultItem).where(
+                AnalysisResultItem.result_id == result_id,
+                AnalysisResultItem.list_type == "all_words",
+            )
+        ).all()
         if not rows:
             return None
 
         bucket_totals = self._init_distribution_totals()
         for row in rows:
-            bucket_totals[self._bucket_key_for_rank(row.coca_rank)] += row.book_frequency
+            bucket_key = self._bucket_key_for_rank(row.coca_rank)
+            bucket_totals[bucket_key]["token_count"] += row.book_frequency
+            if row.is_known:
+                bucket_totals[bucket_key]["known_token_count"] += row.book_frequency
         return bucket_totals
 
-    def _load_distribution_from_csv(self, all_words_file_key: str | None) -> dict[str, int]:
+    def _load_distribution_from_csv(self, all_words_file_key: str | None) -> DistributionTotals:
         if not all_words_file_key:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="distribution source not found")
 
@@ -422,8 +423,45 @@ class AnalysisService:
                 frequency_raw = row.get("书籍出现频率")
                 coca_rank = int(coca_rank_raw) if coca_rank_raw not in ("", None) else None
                 frequency = int(frequency_raw) if frequency_raw not in ("", None) else 0
-                bucket_totals[self._bucket_key_for_rank(coca_rank)] += frequency
+                bucket_key = self._bucket_key_for_rank(coca_rank)
+                bucket_totals[bucket_key]["token_count"] += frequency
+                if str(row.get("是否已掌握", "")).lower() == "true":
+                    bucket_totals[bucket_key]["known_token_count"] += frequency
         return bucket_totals
+
+    def _build_distribution_buckets(
+        self,
+        bucket_totals: DistributionTotals,
+        total_word_count: int,
+    ) -> list[DistributionBucket]:
+        cumulative_known_token_count = 0
+        buckets = []
+        for bucket in DISTRIBUTION_BUCKETS:
+            bucket_key = str(bucket["key"])
+            token_count = bucket_totals[bucket_key]["token_count"]
+            known_token_count = bucket_totals[bucket_key]["known_token_count"]
+            cumulative_known_token_count += known_token_count
+            buckets.append(
+                DistributionBucket(
+                    key=bucket_key,
+                    label=str(bucket["label"]),
+                    token_count=token_count,
+                    token_ratio=(token_count / total_word_count) if total_word_count > 0 else 0,
+                    known_token_count=known_token_count,
+                    known_token_ratio=(known_token_count / total_word_count) if total_word_count > 0 else 0,
+                    cumulative_known_token_count=cumulative_known_token_count,
+                    cumulative_known_token_ratio=(
+                        cumulative_known_token_count / total_word_count
+                    ) if total_word_count > 0 else 0,
+                )
+            )
+        return buckets
+
+    def _sum_distribution_total(self, bucket_totals: DistributionTotals) -> int:
+        return sum(bucket_total["token_count"] for bucket_total in bucket_totals.values())
+
+    def _sum_distribution_known(self, bucket_totals: DistributionTotals) -> int:
+        return sum(bucket_total["known_token_count"] for bucket_total in bucket_totals.values())
 
     def _bucket_key_for_rank(self, coca_rank: int | None) -> str:
         if coca_rank is None:
