@@ -54,7 +54,7 @@
 - `updated_at` `timestamp` NOT NULL
 
 建议枚举：
-- `source_type`: `manual`, `txt_upload`
+- `source_type`: `manual`, `txt_upload`, `chapter_import`
 
 约束：
 - 索引：`(user_id)`

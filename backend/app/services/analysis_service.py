@@ -371,7 +371,7 @@ class AnalysisService:
             user_id=user_id,
             words=words,
             vocabulary_id=None,
-            source_type="analysis_chapter_import",
+            source_type="chapter_import",
             source_file_key=f"analysis_result:{result.id}:chapter:{chapter.id}:coverage_95",
         )
         return ChapterVocabularyImportResponse(

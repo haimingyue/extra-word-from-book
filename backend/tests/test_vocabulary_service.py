@@ -20,6 +20,44 @@ class VocabularyServiceTestCase(unittest.TestCase):
     def tearDown(self) -> None:
         self.engine.dispose()
 
+    def test_add_item_without_vocabulary_id_creates_primary_vocabulary(self) -> None:
+        with self.session_factory() as db:
+            user = User(email="owner@example.com", password_hash="hashed", status="active")
+            db.add(user)
+            db.commit()
+            db.refresh(user)
+
+            item_id, created = self.service.add_item(
+                db=db,
+                user_id=user.id,
+                vocabulary_id=None,
+                word="Reader",
+            )
+
+            self.assertTrue(created)
+            item = db.get(UserVocabularyItem, item_id)
+            self.assertIsNotNone(item)
+            self.assertEqual(item.word, "reader")
+            self.assertIsNotNone(item.vocabulary_id)
+
+            vocabulary = db.get(UserVocabulary, item.vocabulary_id)
+            self.assertIsNotNone(vocabulary)
+            self.assertEqual(vocabulary.user_id, user.id)
+            self.assertTrue(vocabulary.is_primary)
+            self.assertEqual(vocabulary.item_count, 1)
+
+            duplicate_item_id, duplicate_created = self.service.add_item(
+                db=db,
+                user_id=user.id,
+                vocabulary_id=None,
+                word="reader",
+            )
+
+            self.assertEqual(duplicate_item_id, item_id)
+            self.assertFalse(duplicate_created)
+            db.refresh(vocabulary)
+            self.assertEqual(vocabulary.item_count, 1)
+
     def test_clear_items_removes_all_words_and_resets_count(self) -> None:
         with self.session_factory() as db:
             user = User(email="owner@example.com", password_hash="hashed", status="active")
@@ -59,4 +97,3 @@ class VocabularyServiceTestCase(unittest.TestCase):
             )
             db.refresh(vocabulary)
             self.assertEqual(vocabulary.item_count, 0)
-

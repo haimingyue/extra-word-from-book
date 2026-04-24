@@ -121,7 +121,7 @@ class VocabularyService:
 
         existing = db.scalar(
             select(UserVocabularyItem).where(
-                UserVocabularyItem.vocabulary_id == vocabulary_id,
+                UserVocabularyItem.vocabulary_id == vocabulary.id,
                 UserVocabularyItem.normalized_word == normalized,
             )
         )
@@ -129,7 +129,7 @@ class VocabularyService:
             return existing.id, False
 
         item = UserVocabularyItem(
-            vocabulary_id=vocabulary_id,
+            vocabulary_id=vocabulary.id,
             user_id=vocabulary.user_id,
             word=normalized,
             lemma=None,

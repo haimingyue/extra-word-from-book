@@ -136,6 +136,8 @@ class AnalysisChaptersTestCase(unittest.TestCase):
             self.assertGreater(import_response.imported_count, 0)
             vocabulary = db.get(UserVocabulary, import_response.vocabulary_id)
             self.assertIsNotNone(vocabulary)
+            self.assertEqual(vocabulary.source_type, "chapter_import")
+            self.assertLessEqual(len(vocabulary.source_type), 20)
             imported_items = db.query(UserVocabularyItem).filter(UserVocabularyItem.vocabulary_id == vocabulary.id).count()
             self.assertEqual(imported_items, vocabulary.item_count)
 
